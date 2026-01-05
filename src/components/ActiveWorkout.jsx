@@ -13,22 +13,65 @@ export function ActiveWorkout() {
   const [rpe, setRpe] = useState(8)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // DB Abfragen
+  // --- DB ABFRAGEN ---
   const exercises = useLiveQuery(() => db.exercises.toArray())
+  
+  // Aktuelle Session Logs
   const logs = useLiveQuery(
     () => activeSessionId ? db.exercise_logs.where('session_id').equals(activeSessionId).toArray() : [],
     [activeSessionId]
   )
+
+  // --- HISTORIE ABFRAGE (NEU) ---
+  // Holt die letzten Logs der ausgewählten Übung, gruppiert nach Session
+  const history = useLiveQuery(async () => {
+    if (!selectedExerciseId || !activeSessionId) return []
+
+    // 1. Alle Logs dieser Übung holen
+    const allLogs = await db.exercise_logs
+      .where('exercise_id')
+      .equals(selectedExerciseId)
+      .toArray()
+
+    // 2. Filtern: Nur alte Sessions (nicht die aktuelle)
+    const oldLogs = allLogs.filter(l => l.session_id !== activeSessionId)
+
+    // 3. Nach Datum sortieren (neueste zuerst)
+    // Wir nutzen created_at. Falls das bei alten Imports fehlt, Fallback auf 0
+    oldLogs.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+
+    // 4. Gruppieren nach Session ID
+    const sessionsMap = new Map()
+    for (const log of oldLogs) {
+      if (!sessionsMap.has(log.session_id)) {
+        // Wir müssen das Datum der Session holen
+        const session = await db.workout_sessions.get(log.session_id)
+        sessionsMap.set(log.session_id, {
+          date: session ? session.date : new Date(log.created_at), // Fallback
+          sets: []
+        })
+      }
+      // Max 3 Sets pro vergangener Session anzeigen, um Platz zu sparen? 
+      // Oder alle. Wir nehmen alle.
+      sessionsMap.get(log.session_id).sets.push(log)
+    }
+
+    // 5. Array zurückgeben und auf die letzten 2 Trainings begrenzen
+    return Array.from(sessionsMap.values())
+      .sort((a, b) => new Date(b.date) - new Date(a.date)) // Neueste Sessions oben
+      .slice(0, 2) 
+
+  }, [selectedExerciseId, activeSessionId])
+
 
   const getExerciseName = (id) => exercises?.find(e => e.id === id)?.name || 'Unbekannt'
 
   // --- LOGIK: TRAINING STARTEN ---
   async function startWorkout() {
     const id = crypto.randomUUID()
-    // Wir speichern den Startzeitpunkt lokal
     await db.workout_sessions.add({
       id,
-      date: new Date(), // Wichtig: Dexie speichert JS Date Objekte
+      date: new Date(),
       status: 'active'
     })
     setActiveSessionId(id)
@@ -49,70 +92,72 @@ export function ActiveWorkout() {
       weight: parseFloat(weight),
       reps: parseInt(reps),
       rpe: parseFloat(rpe),
-      set_index: logs.length + 1, // Einfache Zählung
+      set_index: logs.length + 1,
       created_at: new Date()
     })
     
-    // Kleines haptisches Feedback (wenn Handy unterstützt)
     if (navigator.vibrate) navigator.vibrate(50)
   }
 
-  // --- LOGIK: TRAINING BEENDEN & UPLOAD ---
+  // --- LOGIK: TRAINING BEENDEN (Robust Update) ---
   async function finishWorkout() {
     if (!activeSessionId) return
     setIsSyncing(true)
 
+    // A) Erstmal LOKAL abschließen (damit User nicht stecken bleibt)
     try {
-      // 1. Hole die Session Daten aus Dexie
+      await db.workout_sessions.update(activeSessionId, { status: 'completed' })
+    } catch (e) {
+      console.error("Datenbank Fehler lokal:", e)
+    }
+
+    // B) Versuch Upload
+    try {
+      if (!navigator.onLine) throw new Error("Offline")
+
       const session = await db.workout_sessions.get(activeSessionId)
       const sessionLogs = await db.exercise_logs.where('session_id').equals(activeSessionId).toArray()
 
-      // 2. Prüfe Online-Status
-      if (navigator.onLine) {
-        console.log("Lade Training hoch...", session.id)
+      // Session hochladen
+      const { error: sessError } = await supabase.from('workout_sessions').insert({
+        id: session.id,
+        date: session.date,
+        status: 'completed'
+      })
+      if (sessError) throw sessError
 
-        // A) Session hochladen
-        const { error: sessError } = await supabase.from('workout_sessions').insert({
-          id: session.id,
-          date: session.date, // Supabase konvertiert das Date-Objekt automatisch
-          status: 'completed'
-        })
-        if (sessError) throw sessError
+      // Sätze hochladen
+      const cleanLogs = sessionLogs.map(log => ({
+        id: log.id,
+        session_id: log.session_id,
+        exercise_id: log.exercise_id,
+        weight: log.weight,
+        reps: log.reps,
+        rpe: log.rpe,
+        set_index: log.set_index
+      }))
 
-        // B) Sätze hochladen
-        // Wir müssen sicherstellen, dass wir nur Daten senden, die die DB versteht
-        const cleanLogs = sessionLogs.map(log => ({
-          id: log.id,
-          session_id: log.session_id,
-          exercise_id: log.exercise_id,
-          weight: log.weight,
-          reps: log.reps,
-          rpe: log.rpe,
-          set_index: log.set_index
-        }))
+      const { error: logError } = await supabase.from('exercise_logs').insert(cleanLogs)
+      if (logError) throw logError
 
-        const { error: logError } = await supabase.from('exercise_logs').insert(cleanLogs)
-        if (logError) throw logError
-
-        alert("Training erfolgreich synchronisiert! 🎉")
-      } else {
-        alert("Du bist offline. Training wurde lokal gespeichert und wird später synchronisiert.")
-      }
-
-      // 3. Lokal aufräumen / Status ändern
-      await db.workout_sessions.update(activeSessionId, { status: 'completed' })
-      setActiveSessionId(null)
-      setSelectedExerciseId('')
+      alert("Training erfolgreich synchronisiert! 🎉")
 
     } catch (err) {
-      console.error("Fehler beim Upload:", err)
-      alert("Fehler beim Upload: " + err.message)
+      console.warn("Upload nicht möglich (Offline oder Fehler):", err)
+      // Wir meckern nicht groß, sondern informieren nur kurz
+      if (err.message === "Offline") {
+        alert("Training lokal gespeichert. Upload folgt später sobald Online.")
+      } else {
+        alert("Lokal gespeichert. Upload-Fehler: " + err.message)
+      }
     } finally {
       setIsSyncing(false)
+      setActiveSessionId(null)
+      setSelectedExerciseId('')
     }
   }
 
-  // --- HELPER: STEPPER BUTTONS ---
+  // --- HELPER: STEPPER ---
   const Stepper = ({ label, value, setter, step = 1 }) => (
     <div className="flex flex-col items-center">
       <label className="text-xs text-gray-500 mb-1">{label}</label>
@@ -138,7 +183,7 @@ export function ActiveWorkout() {
 
   // --- ANSICHT: AKTIV ---
   return (
-    <div className="space-y-6 pb-20"> {/* pb-20 für Platz unten */}
+    <div className="space-y-6 pb-20">
       <div className="flex justify-between items-center border-b pb-4">
         <h2 className="text-xl font-bold text-gray-800">Training läuft...</h2>
         <button 
@@ -162,7 +207,30 @@ export function ActiveWorkout() {
         ))}
       </select>
 
-      {/* Eingabemaske mit großen Buttons */}
+      {/* --- HISTORY SECTION (NEU) --- */}
+      {selectedExerciseId && history && history.length > 0 && (
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm">
+          <h3 className="font-bold text-blue-800 mb-2">Letzte Leistungen:</h3>
+          <div className="space-y-3">
+            {history.map((session, idx) => (
+              <div key={idx}>
+                <div className="text-xs text-blue-600 font-semibold mb-1">
+                  {new Date(session.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {session.sets.map(s => (
+                     <span key={s.id} className="bg-white px-2 py-0.5 rounded border border-blue-200 text-gray-700 shadow-sm">
+                       {s.weight}kg × {s.reps}
+                     </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Eingabemaske */}
       {selectedExerciseId && (
         <div className="bg-white p-4 rounded-xl shadow-md border border-gray-100 space-y-6">
           <div className="flex justify-between px-2">
@@ -180,10 +248,10 @@ export function ActiveWorkout() {
         </div>
       )}
 
-      {/* Log Liste */}
+      {/* Log Liste Aktuell */}
       <div className="space-y-2">
-        {logs?.slice().reverse().map(log => ( // Neueste oben
-          <div key={log.id} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-400">
+        {logs?.slice().reverse().map(log => (
+          <div key={log.id} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-400">
             <div>
               <span className="block font-bold text-gray-700">{getExerciseName(log.exercise_id)}</span>
               <span className="text-xs text-gray-400">Satz {log.set_index}</span>
