@@ -1,38 +1,25 @@
-# 🚀 Project Progress Tracker
+# Projektfortschritt
 
-## 🟢 Current Status
-**Phase:** 1 (Setup)
-**Next Step:** Supabase Database Schema & Auth Setup
+## Status: 🟡 Bugfixing / Hardening
+**Aktueller Fokus:** Offline-Indikator & Zuverlässiger Sync-Mechanismus
 
----
+## Roadmap
 
-## 🛠 Roadmap & Tasks
+### Phase 1: Setup & Grundgerüst (Erledigt ✅)
+- [x] Projekt-Initialisierung (Vite, React, Tailwind)
+- [x] Supabase & Dexie Setup
+- [x] Deployment Pipeline (GitHub Pages)
+- [x] PWA Installation (Service Worker läuft)
 
-### Phase 1: Foundation (Current)
-- [ ] Create GitHub Repository
-- [ ] Initialize Vite + React + Tailwind Project
-- [ ] Set up Supabase Project (Tables & RLS)
-- [ ] Configure GitHub Actions for auto-deploy to GH-Pages
+### Phase 2: Core Loop & Robustness (In Arbeit 🚧)
+- [x] Active Workout UI (Basis)
+- [x] Sätze lokal loggen (Dexie)
+- [x] Feature: Historie im Training anzeigen
+- [ ] **Fix:** Visueller Online/Offline Status Indikator
+- [ ] **Fix:** "Finish Workout" darf bei Offline nicht hängen bleiben
+- [ ] **Fix:** Auto-Sync beim App-Start (Hochladen von 'completed' Sessions, die noch lokal liegen)
 
-### Phase 2: Offline-First Logic
-- [ ] Install Dexie.js and define local schema
-- [ ] Create Sync-Provider (Push/Pull logic between Dexie and Supabase)
-- [ ] Implement Auth-Guard (Login screen)
-
-### Phase 3: Tracking UI (Mobile)
-- [ ] Create Exercise Selector
-- [ ] Build Set-Logging Component (Buttons for +/- instead of keyboard)
-- [ ] Rest-Timer Implementation
-
-### Phase 4: The Brain (Algorithm)
-- [ ] Implement Logic-Engine as a standalone JS module
-- [ ] Connect Engine to "New Workout" flow
-
-### Phase 5: Polish & Analysis
-- [ ] PWA Manifest & Icons
-- [ ] Simple Chart.js dashboard for Desktop views
-
----
-
-## 📝 Change Log
-* **2024-XX-XX:** Project initialized. Architecture defined.
+### Phase 3: Features
+- [ ] Workout Templates (Routinen erstellen & laden)
+- [ ] Bearbeiten von vergangenen Logs
+- [ ] Erweiterte Statistiken

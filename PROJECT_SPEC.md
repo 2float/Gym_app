@@ -1,32 +1,24 @@
-# 📋 Project Specification: Gym-Log & Auto-Planner (PWA)
+# Project Specification
 
-## 1. Vision & Constraints
-* **Goal:** Seamless gym tracking (Offline-First) with automated workout generation.
-* **Cost:** 0€ (GitHub Pages + Supabase Free Tier).
-* **Stack:** Vite, React, Tailwind CSS, Dexie.js (IndexedDB), Supabase.
-* **Key Feature:** Modular JS-Algorithm for progressive overload.
+## Sync-Strategie (Offline-First)
 
-## 2. Technical Architecture
-* **Source of Truth:** Supabase (PostgreSQL).
-* **Local Cache:** Dexie.js (IndexedDB) for 100% offline capability.
-* **Sync Strategy:** 1. Fetch latest data on app start (if online).
-    2. Log everything to IndexedDB during workout.
-    3. Push "Done" workouts to Supabase when connection is available.
-* **Auth:** Supabase Auth (Magic Link / Email).
+### 1. Status Erkennung
+- Die App muss aktiv auf `window.addEventListener('online')` und `('offline')` hören.
+- Ein visueller Banner zeigt an, wenn der User offline ist.
 
-## 3. Database Schema (Draft)
-* `profiles`: id, user_id, preferences (jsonb).
-* `exercises`: id, name, category, increment_value ($step\_size$).
-* `workout_templates`: id, name, exercise_list (uuid[]).
-* `workout_sessions`: id, template_id, date, status (draft/completed).
-* `exercise_logs`: id, session_id, exercise_id, weight, reps, rpe, set_index.
+### 2. Speichern (Write)
+- **Immer:** Schreiben in Dexie.js (Lokale DB).
+- **Versuch:** Wenn Online -> Push zu Supabase.
+- **Fallback:** Wenn Offline oder Fehler -> Nur lokal markieren (`status: 'completed'`), User informieren ("Lokal gespeichert").
 
-## 4. Algorithm Logic (v1)
-* **Input:** Last 3 sessions for Exercise X.
-* **Rule:** * If RPE $\le 8$ for all sets $\rightarrow$ Next Weight = Current Weight + $step\_size$.
-    * If RPE $> 9$ or failure $\rightarrow$ Maintain Weight.
-    * If failure occurs in 2 consecutive sessions $\rightarrow$ Deload -10%.
+### 3. Re-Sync (Read/Upload)
+- **Trigger:** Beim App-Start (Mount) und wenn Status auf "Online" wechselt.
+- **Logik:**
+    1. Suche in Dexie nach Sessions mit `status: 'completed'`.
+    2. Prüfe, ob diese Sessions bereits in Supabase existieren (Check via ID).
+    3. Falls nicht in Supabase -> Upload Session + Logs.
+    4. Feedback an User (z.B. kleiner Toast "3 Trainings nachsynchronisiert").
 
-## 5. Deployment
-* **Frontend:** GitHub Pages via GitHub Actions.
-* **Access:** PWA (Add to Home Screen) on iOS for persistent storage.
+## Tech Constraints
+- **Datentypen:** Gewicht (FLOAT), RPE (FLOAT, 0.5 Schritte).
+- **Keys:** Supabase URL/Key kommen aus `import.meta.env`.
