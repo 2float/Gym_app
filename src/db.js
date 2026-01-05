@@ -1,17 +1,19 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('GymDatabase');
+export const db = new Dexie('GymAppDatabase');
 
-db.version(1).stores({
-  // Primärschlüssel ist 'id'
-  exercises: 'id, name, category', 
+db.version(2).stores({
+  // Bisherige Stores (Phase 1 & 2)
+  workout_logs: '++id, date, workoutName', 
   
-  // Für Templates speichern wir auch die exercise_order
-  workout_templates: 'id, name',
-  
-  // Trainingseinheiten
-  workout_sessions: 'id, status, date', 
-  
-  // Die Logs: 'session_id' wird indexiert für schnelle Abfragen
-  exercise_logs: 'id, session_id, exercise_id' 
+  // NEU: Phase 3 - Smart Features (Reference Data)
+  // Wir nutzen die UUIDs aus Supabase als primäre Keys
+  app_config: 'key',
+  ref_equipment: 'id, name',
+  ref_exercises: 'id, name, category',
+  ref_routines: 'id, name, sort_order',
+  ref_routine_exercises: 'id, routine_id, exercise_id'
 });
+
+// Helper Log
+console.log("Database initialized (v2)");

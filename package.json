@@ -2,7 +2,7 @@
   "homepage": "https://2float.github.io/Gym_app",
   "name": "gym-app",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "@tailwindcss/postcss": "^4.1.18",
     "dexie": "^4.2.1",
     "dexie-react-hooks": "^4.2.0",
+    "dotenv": "^17.2.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

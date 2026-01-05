@@ -1,149 +1,176 @@
-import { useState, useEffect, useRef } from 'react'
-import { ActiveWorkout } from './components/ActiveWorkout'
-import { db } from './db'
-import { supabase } from './supabaseClient'
-import { useOnlineStatus } from './hooks/useOnlineStatus'
-import { useLiveQuery } from 'dexie-react-hooks'
+import React, { useState, useEffect } from 'react';
+import { db } from './db';
+import { supabase } from './supabaseClient'; // <--- DAS HAT GEFEHLT!
+import ActiveWorkout from './components/ActiveWorkout';
+import useOnlineStatus from './hooks/useOnlineStatus';
+import { generateNextWorkout } from './services/smartWorkoutService';
+
 
 function App() {
-  const isOnline = useOnlineStatus()
-  const syncTimeoutRef = useRef(null) // Referenz für den Timer
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [history, setHistory] = useState([]);
   
-  // --- RECENT HISTORY ---
-  const recentSessions = useLiveQuery(async () => {
-    const sessions = await db.workout_sessions
-      .where('status').equals('completed')
-      .reverse()
-      .limit(3)
-      .toArray()
-    
-    const sessionsWithStats = await Promise.all(sessions.map(async s => {
-      const logs = await db.exercise_logs.where('session_id').equals(s.id).count()
-      return { ...s, set_count: logs }
-    }))
-    
-    return sessionsWithStats
-  })
+  // NEU: Smart Features State
+  const [smartPlan, setSmartPlan] = useState(null); // Speichert den generierten Plan
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false); // Lade-Spinner
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // --- GLOBAL AUTO-SYNC (Mit 2s Debounce) ---
+  const isOnline = useOnlineStatus();
+
+  // Load history from Dexie
   useEffect(() => {
-    // 1. Wenn Offline: Sofort Timer abbrechen, nichts tun.
-    if (!isOnline) {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      return;
-    }
-
-    // 2. Wenn Online erkannt: Alten Timer löschen (falls vorhanden) und neuen setzen
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    
-    console.log("⏳ Online erkannt. Warte 2s auf Stabilität...");
-    
-    syncTimeoutRef.current = setTimeout(() => {
-      console.log("🚀 2s stabil online. Starte Background-Sync!");
-      syncOfflineSessions();
-    }, 2000); // 2000ms Wartezeit
-
-    return () => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    const loadHistory = async () => {
+      const logs = await db.workout_logs.orderBy('date').reverse().toArray();
+      setHistory(logs);
     };
-  }, [isOnline]) 
+    loadHistory();
+  }, [isWorkoutActive]);
 
-  async function syncOfflineSessions() {
-    try {
-      const offlineSessions = await db.workout_sessions
-        .where('status').equals('completed')
-        .toArray()
+  // Sync Logic (Background)
+  useEffect(() => {
+    const initData = async () => {
+      // 1. Lokale Daten laden
+      let localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
+      
+      // 2. Down-Sync Check: Wenn lokal leer, aber online -> Hol Daten aus der Cloud
+      if (localLogs.length === 0 && isOnline) {
+        console.log("🕳 Lokale DB leer. Starte Down-Sync aus der Cloud...");
+        const { data: cloudLogs, error } = await supabase
+          .from('workout_logs')
+          .select('*')
+          .order('date', { ascending: false });
 
-      if (offlineSessions.length === 0) return
-
-      // Prüfen was schon da ist
-      const localIds = offlineSessions.map(s => s.id)
-      const { data: existingRemote, error } = await supabase
-        .from('workout_sessions')
-        .select('id')
-        .in('id', localIds)
-
-      if (error) throw error // Abbruch bei Netzwerkfehler
-
-      const existingIds = new Set(existingRemote?.map(x => x.id) || [])
-      const sessionsToSync = offlineSessions.filter(s => !existingIds.has(s.id))
-
-      if (sessionsToSync.length === 0) return;
-
-      console.log(`📡 Background Sync: ${sessionsToSync.length} Sessions...`)
-
-      for (const session of sessionsToSync) {
-        // Session
-        const { error: sessError } = await supabase.from('workout_sessions').insert({
-          id: session.id,
-          date: session.date,
-          status: 'completed'
-        })
-        if (sessError) throw sessError;
-        
-        // Logs
-        const logs = await db.exercise_logs.where('session_id').equals(session.id).toArray()
-        const cleanLogs = logs.map(log => ({
-          id: log.id,
-          session_id: log.session_id,
-          exercise_id: log.exercise_id,
-          weight: log.weight,
-          reps: log.reps,
-          rpe: log.rpe,
-          set_index: log.set_index
-        }))
-
-        if (cleanLogs.length > 0) {
-          const { error: logError } = await supabase.from('exercise_logs').insert(cleanLogs)
-          if (logError) throw logError;
+        if (!error && cloudLogs.length > 0) {
+          // Wichtig: IDs beibehalten oder neu vergeben? 
+          // Da Dexie auto-increment hat, aber wir UUIDs aus Supabase haben,
+          // speichern wir sie idealerweise so, wie sie kommen.
+          // Wir müssen sicherstellen, dass Dexie die UUID akzeptiert oder wir mappen sie.
+          // Fürs erste mappen wir die Cloud-Daten einfach rein:
+          
+          await db.workout_logs.bulkPut(cloudLogs);
+          localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
+          console.log(`📥 ${localLogs.length} Logs synchronisiert!`);
         }
       }
-      console.log("✅ Background Sync erfolgreich!")
 
+      setHistory(localLogs);
+    };
+
+    initData();
+  }, [isWorkoutActive, isOnline]); // Auch bei Online-Status-Wechsel prüfen
+
+  // NEU: Smart Workout Start
+  const handleStartSmartWorkout = async () => {
+    setIsLoadingPlan(true);
+    setErrorMsg("");
+    try {
+      // 1. Plan generieren lassen (Online-Check passiert im Service bzw. wird vorausgesetzt)
+      if (!isOnline) {
+        throw new Error("Für den Smart-Start benötigst du Internet!");
+      }
+
+      const plan = await generateNextWorkout();
+      console.log("Plan geladen:", plan);
+      
+      setSmartPlan(plan);
+      setIsWorkoutActive(true);
     } catch (err) {
-       console.error("Auto-Sync abgebrochen (Netzwerk instabil?):", err)
+      console.error(err);
+      setErrorMsg("Fehler beim Laden des Plans: " + err.message);
+      // Fallback: Leeres Training starten? Oder User zwingen zu retry?
+      // Wir lassen ihn erstmal im Menu.
+    } finally {
+      setIsLoadingPlan(false);
     }
-  }
+  };
+
+  const handleFinishWorkout = () => {
+    setIsWorkoutActive(false);
+    setSmartPlan(null); // Reset Plan
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center py-10 px-4">
-      
-      {/* HEADER ROW (Ohne Status Button) */}
-      <div className="w-full max-w-md flex justify-center items-center mb-8">
-        <h1 className="text-4xl font-black text-blue-600 tracking-tighter">
-          GYM APP <span className="text-gray-400 text-lg font-normal">v0.3</span>
-        </h1>
-      </div>
+    <div className="min-h-screen bg-gray-100 font-sans text-gray-900">
+      {/* HEADER */}
+      <header className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center">
+        <h1 className="text-xl font-bold tracking-tight">Gym App v0.3</h1>
+        {/* Status Indikator (optional, aber hilfreich) */}
+        <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-500'}`} title={isOnline ? "Online" : "Offline"}></div>
+      </header>
 
-      <div className="w-full max-w-md space-y-8">
-        <ActiveWorkout isOnline={isOnline} />
+      {/* ERROR MESSAGE */}
+      {errorMsg && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 m-4">
+          <p>{errorMsg}</p>
+        </div>
+      )}
 
-        {/* --- RECENT HISTORY --- */}
-        {recentSessions && recentSessions.length > 0 && (
-          <div className="border-t pt-6 animate-in slide-in-from-bottom-4">
-            <h3 className="text-gray-500 font-bold uppercase text-xs mb-3 tracking-wide">Letzte Trainings</h3>
-            <div className="space-y-3">
-              {recentSessions.map(session => (
-                <div key={session.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                  <div>
-                    <div className="font-bold text-gray-800">
-                      {new Date(session.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+      <main className="p-4 max-w-md mx-auto">
+        {isWorkoutActive ? (
+          <ActiveWorkout 
+            initialData={smartPlan} // Wir geben den Plan weiter!
+            onFinish={handleFinishWorkout} 
+          />
+        ) : (
+          <div className="space-y-6">
+            {/* WELCOME / DASHBOARD */}
+            <div className="bg-white p-6 rounded-lg shadow-sm text-center">
+              <h2 className="text-2xl font-bold mb-2">Bereit für Gains?</h2>
+              <p className="text-gray-600 mb-6">Lass uns deinen perfekten Plan für heute berechnen.</p>
+              
+              <button 
+                onClick={handleStartSmartWorkout}
+                disabled={isLoadingPlan}
+                className={`w-full py-4 rounded-xl text-lg font-bold shadow-lg transition-all transform active:scale-95 flex justify-center items-center
+                  ${isLoadingPlan 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-700 hover:to-blue-600'
+                  }`}
+              >
+                {isLoadingPlan ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Berechne Plan...
+                  </>
+                ) : (
+                  "🚀 Smart Workout Starten"
+                )}
+              </button>
+              
+              {!isOnline && (
+                <p className="text-xs text-red-500 mt-2">
+                  * Internet erforderlich für Plan-Generierung
+                </p>
+              )}
+            </div>
+
+            {/* HISTORY LIST */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-700 uppercase text-sm tracking-wider">Letzte Workouts</h3>
+              {history.length === 0 ? (
+                <p className="text-gray-500 text-sm italic">Noch keine Einträge.</p>
+              ) : (
+                history.slice(0, 5).map(log => (
+                  <div key={log.id || log.date} className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-400">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-gray-800">{log.workoutName || "Training"}</span>
+                      <span className="text-xs text-gray-500">{new Date(log.date).toLocaleDateString()}</span>
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {new Date(session.date).toLocaleTimeString('de-DE', { hour: '2-digit', minute:'2-digit' })} Uhr
+                    <div className="text-sm text-gray-600">
+                      {log.exercises?.length || 0} Übungen
                     </div>
                   </div>
-                  <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-bold">
-                    {session.set_count} Sätze
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

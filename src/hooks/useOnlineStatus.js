@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
-export function useOnlineStatus() {
+export default function useOnlineStatus() {
   // Startwert: Wir trauen dem Browser erstmal
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
@@ -15,7 +15,11 @@ export function useOnlineStatus() {
 
       try {
         // 'head: true' = Nur Header laden, extrem schnell & datensparsam
-        const { error } = await supabase.from('workout_sessions').select('id', { count: 'exact', head: true });
+        const { error } = await supabase.from('workout_logs').select('id', { count: 'exact', head: true });
+        
+        // Hinweis: Ich habe hier 'workout_logs' statt 'workout_sessions' genommen, 
+        // da wir die Tabelle 'workout_sessions' eventuell gar nicht mehr nutzen/haben.
+        // 'workout_logs' existiert sicher durch unseren Import.
         
         // Wenn kein Netzwerk-Fehler kommt, sind wir online
         if (!error || error.code !== 'PGRST000') { 
