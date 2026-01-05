@@ -1,92 +1,116 @@
-import { useEffect, useState } from 'react'
-import { supabase } from './supabaseClient'
-import { db } from './db'
-import { useLiveQuery } from 'dexie-react-hooks'
+import { useState, useEffect } from 'react'
 import { ActiveWorkout } from './components/ActiveWorkout'
+import { db } from './db'
+import { supabase } from './supabaseClient'
+import { useOnlineStatus } from './hooks/useOnlineStatus'
 
 function App() {
-  // 1. Live-Daten aus der lokalen DB
-  const exercises = useLiveQuery(() => db.exercises.toArray())
-  
-  // 2. Status für Internet-Verbindung
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const isOnline = useOnlineStatus()
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
 
+  // --- AUTO-SYNC BEIM START & WENN ONLINE KOMMT ---
   useEffect(() => {
-    // Event-Listener: Hören, ob das Netz weggeht oder wiederkommt
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
+    if (isOnline) {
+      syncOfflineSessions()
+    }
+  }, [isOnline]) 
 
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
+  async function syncOfflineSessions() {
+    try {
+      // 1. Suche nach Sessions, die lokal 'completed' sind
+      const offlineSessions = await db.workout_sessions
+        .where('status').equals('completed')
+        .toArray()
 
-    // Sync-Logik: Nur ausführen, wenn wir wirklich online sind
-    async function syncData() {
-      if (!navigator.onLine) {
-        console.log("Offline: Überspringe Download.")
-        return
+      if (offlineSessions.length === 0) return
+
+      setIsSyncing(true)
+      setSyncMessage(`Synchronisiere ${offlineSessions.length} Trainings...`)
+
+      let uploadCount = 0
+
+      for (const session of offlineSessions) {
+        // Check, ob Session schon in Supabase ist
+        const { data: existing } = await supabase
+          .from('workout_sessions')
+          .select('id')
+          .eq('id', session.id)
+          .single()
+
+        if (!existing) {
+          // A. Session hochladen
+          const { error: sessErr } = await supabase
+            .from('workout_sessions')
+            .insert({
+              id: session.id,
+              date: session.date,
+              status: 'completed'
+            })
+          
+          if (sessErr) {
+            console.error("Sync Fehler Session:", sessErr)
+            continue 
+          }
+
+          // B. Logs (Sätze) dazu holen und hochladen
+          const logs = await db.exercise_logs
+            .where('session_id').equals(session.id)
+            .toArray()
+
+          const cleanLogs = logs.map(l => ({
+            id: l.id,
+            session_id: l.session_id,
+            exercise_id: l.exercise_id,
+            weight: l.weight,
+            reps: l.reps,
+            rpe: l.rpe,
+            set_index: l.set_index
+          }))
+
+          if (cleanLogs.length > 0) {
+             const { error: logErr } = await supabase.from('exercise_logs').insert(cleanLogs)
+             if (logErr) console.error("Sync Fehler Logs:", logErr)
+          }
+          uploadCount++
+        }
       }
 
-      try {
-        console.log("Online: Lade neue Daten von Supabase...")
-        const { data: supabaseExercises, error } = await supabase.from('exercises').select('*')
-        if (error) throw error
-        
-        await db.exercises.bulkPut(supabaseExercises)
-        console.log("Sync erfolgreich.")
-      } catch (err) {
-        console.error("Sync Fehler:", err)
+      if (uploadCount > 0) {
+        setSyncMessage(`${uploadCount} Trainings nachsynchronisiert ✅`)
+        setTimeout(() => setSyncMessage(''), 3000)
+      } else {
+        setSyncMessage('')
       }
-    }
 
-    syncData()
-
-    // Aufräumen, wenn die App geschlossen wird
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
+    } catch (err) {
+      console.error("Auto-Sync Error:", err)
+    } finally {
+      setIsSyncing(false)
     }
-  }, []) // Wird beim Start ausgeführt
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      
-      {/* Der Offline-Banner */}
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center py-10 px-4">
+      <h1 className="text-4xl font-black text-blue-600 mb-8 tracking-tighter">
+        GYM APP <span className="text-gray-400 text-lg font-normal">v0.2</span>
+      </h1>
+
+      {/* --- STATUS BANNER --- */}
       {!isOnline && (
-        <div className="bg-amber-100 border-l-4 border-amber-500 text-amber-700 p-4 mb-4" role="alert">
-          <p className="font-bold">Offline-Modus</p>
-          <p className="text-sm">Du siehst Daten aus dem lokalen Speicher. Änderungen werden später synchronisiert.</p>
+         <div className="w-full max-w-md bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-2 mb-4 text-sm font-bold text-center shadow-sm">
+           📡 Offline Modus - Speichere lokal
+         </div>
+      )}
+      {isSyncing && (
+        <div className="w-full max-w-md bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-2 mb-4 text-sm font-bold text-center animate-pulse shadow-sm">
+           🔄 {syncMessage || 'Synchronisiere...'}
         </div>
       )}
 
-      <div className="p-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Meine Übungen</h1>
-          {/* Kleiner Indikator oben rechts */}
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${isOnline ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
-            {isOnline ? '● Online' : '○ Offline'}
-          </span>
-        </div>
-        <div className="mb-8">
-          <ActiveWorkout />
-        </div>
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <ul>
-            {exercises?.map(ex => (
-              <li key={ex.id} className="border-b last:border-b-0 px-6 py-4 flex justify-between items-center hover:bg-gray-50">
-                <span className="font-medium text-gray-900">{ex.name}</span>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {ex.category}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {/* Fallback, wenn Liste leer ist */}
-          {exercises?.length === 0 && (
-            <div className="p-6 text-center text-gray-500">
-              Keine Übungen gefunden.
-            </div>
-          )}
-        </div>
+      <div className="w-full max-w-md">
+        {/* Wir geben isOnline weiter, damit ActiveWorkout Bescheid weiß */}
+        <ActiveWorkout isOnline={isOnline} />
       </div>
     </div>
   )

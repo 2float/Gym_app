@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { db } from '../db'
 import { supabase } from '../supabaseClient'
 import { useLiveQuery } from 'dexie-react-hooks'
+// KEIN import von useOnlineStatus hier! Wir bekommen es von oben.
 
-export function ActiveWorkout() {
+// Wir empfangen isOnline als Prop
+export function ActiveWorkout({ isOnline }) { 
   const [activeSessionId, setActiveSessionId] = useState(null)
   const [selectedExerciseId, setSelectedExerciseId] = useState('')
   
@@ -16,57 +18,37 @@ export function ActiveWorkout() {
   // --- DB ABFRAGEN ---
   const exercises = useLiveQuery(() => db.exercises.toArray())
   
-  // Aktuelle Session Logs
   const logs = useLiveQuery(
     () => activeSessionId ? db.exercise_logs.where('session_id').equals(activeSessionId).toArray() : [],
     [activeSessionId]
   )
 
-  // --- HISTORIE ABFRAGE (NEU) ---
-  // Holt die letzten Logs der ausgewählten Übung, gruppiert nach Session
+  // --- HISTORIE ABFRAGE ---
   const history = useLiveQuery(async () => {
     if (!selectedExerciseId || !activeSessionId) return []
-
-    // 1. Alle Logs dieser Übung holen
-    const allLogs = await db.exercise_logs
-      .where('exercise_id')
-      .equals(selectedExerciseId)
-      .toArray()
-
-    // 2. Filtern: Nur alte Sessions (nicht die aktuelle)
+    const allLogs = await db.exercise_logs.where('exercise_id').equals(selectedExerciseId).toArray()
     const oldLogs = allLogs.filter(l => l.session_id !== activeSessionId)
-
-    // 3. Nach Datum sortieren (neueste zuerst)
-    // Wir nutzen created_at. Falls das bei alten Imports fehlt, Fallback auf 0
     oldLogs.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-
-    // 4. Gruppieren nach Session ID
     const sessionsMap = new Map()
     for (const log of oldLogs) {
       if (!sessionsMap.has(log.session_id)) {
-        // Wir müssen das Datum der Session holen
         const session = await db.workout_sessions.get(log.session_id)
         sessionsMap.set(log.session_id, {
-          date: session ? session.date : new Date(log.created_at), // Fallback
+          date: session ? session.date : new Date(log.created_at),
           sets: []
         })
       }
-      // Max 3 Sets pro vergangener Session anzeigen, um Platz zu sparen? 
-      // Oder alle. Wir nehmen alle.
       sessionsMap.get(log.session_id).sets.push(log)
     }
-
-    // 5. Array zurückgeben und auf die letzten 2 Trainings begrenzen
     return Array.from(sessionsMap.values())
-      .sort((a, b) => new Date(b.date) - new Date(a.date)) // Neueste Sessions oben
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 2) 
-
   }, [selectedExerciseId, activeSessionId])
 
 
   const getExerciseName = (id) => exercises?.find(e => e.id === id)?.name || 'Unbekannt'
 
-  // --- LOGIK: TRAINING STARTEN ---
+  // --- START ---
   async function startWorkout() {
     const id = crypto.randomUUID()
     await db.workout_sessions.add({
@@ -77,7 +59,7 @@ export function ActiveWorkout() {
     setActiveSessionId(id)
   }
 
-  // --- LOGIK: SATZ SPEICHERN ---
+  // --- LOG SET ---
   async function logSet() {
     if (reps <= 0 || weight <= 0) {
       alert("Gewicht und Wiederholungen müssen größer als 0 sein.")
@@ -99,62 +81,67 @@ export function ActiveWorkout() {
     if (navigator.vibrate) navigator.vibrate(50)
   }
 
-  // --- LOGIK: TRAINING BEENDEN (Robust Update) ---
+  // --- FINISH (Verwendet isOnline Prop) ---
   async function finishWorkout() {
     if (!activeSessionId) return
     setIsSyncing(true)
 
-    // A) Erstmal LOKAL abschließen (damit User nicht stecken bleibt)
+    // 1. LOKALER SAFE
     try {
       await db.workout_sessions.update(activeSessionId, { status: 'completed' })
     } catch (e) {
-      console.error("Datenbank Fehler lokal:", e)
-    }
-
-    // B) Versuch Upload
-    try {
-      if (!navigator.onLine) throw new Error("Offline")
-
-      const session = await db.workout_sessions.get(activeSessionId)
-      const sessionLogs = await db.exercise_logs.where('session_id').equals(activeSessionId).toArray()
-
-      // Session hochladen
-      const { error: sessError } = await supabase.from('workout_sessions').insert({
-        id: session.id,
-        date: session.date,
-        status: 'completed'
-      })
-      if (sessError) throw sessError
-
-      // Sätze hochladen
-      const cleanLogs = sessionLogs.map(log => ({
-        id: log.id,
-        session_id: log.session_id,
-        exercise_id: log.exercise_id,
-        weight: log.weight,
-        reps: log.reps,
-        rpe: log.rpe,
-        set_index: log.set_index
-      }))
-
-      const { error: logError } = await supabase.from('exercise_logs').insert(cleanLogs)
-      if (logError) throw logError
-
-      alert("Training erfolgreich synchronisiert! 🎉")
-
-    } catch (err) {
-      console.warn("Upload nicht möglich (Offline oder Fehler):", err)
-      // Wir meckern nicht groß, sondern informieren nur kurz
-      if (err.message === "Offline") {
-        alert("Training lokal gespeichert. Upload folgt später sobald Online.")
-      } else {
-        alert("Lokal gespeichert. Upload-Fehler: " + err.message)
-      }
-    } finally {
+      console.error("DB Error:", e)
+      alert("Fehler beim lokalen Speichern!")
       setIsSyncing(false)
-      setActiveSessionId(null)
-      setSelectedExerciseId('')
+      return
     }
+
+    let userMessage = "Training beendet."
+
+    // 2. UPLOAD VERSUCH (Nutzung der Prop!)
+    if (isOnline) {
+      try {
+        const session = await db.workout_sessions.get(activeSessionId)
+        const sessionLogs = await db.exercise_logs.where('session_id').equals(activeSessionId).toArray()
+
+        // Session Upload
+        const { error: sessError } = await supabase.from('workout_sessions').insert({
+          id: session.id,
+          date: session.date,
+          status: 'completed'
+        })
+        if (sessError) throw sessError
+
+        // Logs Upload
+        const cleanLogs = sessionLogs.map(log => ({
+          id: log.id,
+          session_id: log.session_id,
+          exercise_id: log.exercise_id,
+          weight: log.weight,
+          reps: log.reps,
+          rpe: log.rpe,
+          set_index: log.set_index
+        }))
+
+        if (cleanLogs.length > 0) {
+          const { error: logError } = await supabase.from('exercise_logs').insert(cleanLogs)
+          if (logError) throw logError
+        }
+
+        userMessage = "Training erfolgreich synchronisiert! 🎉"
+
+      } catch (err) {
+        console.warn("Upload Fehler:", err)
+        userMessage = "Lokal gespeichert. Upload folgt automatisch sobald Online."
+      }
+    } else {
+      userMessage = "Offline: Training lokal gesichert. 💾"
+    }
+
+    alert(userMessage)
+    setIsSyncing(false)
+    setActiveSessionId(null)
+    setSelectedExerciseId('')
   }
 
   // --- HELPER: STEPPER ---
@@ -169,7 +156,7 @@ export function ActiveWorkout() {
     </div>
   )
 
-  // --- ANSICHT: START ---
+  // --- RENDER ---
   if (!activeSessionId) {
     return (
       <button 
@@ -181,7 +168,6 @@ export function ActiveWorkout() {
     )
   }
 
-  // --- ANSICHT: AKTIV ---
   return (
     <div className="space-y-6 pb-20">
       <div className="flex justify-between items-center border-b pb-4">
@@ -195,7 +181,6 @@ export function ActiveWorkout() {
         </button>
       </div>
 
-      {/* Übungswahl */}
       <select 
         className="w-full p-4 bg-white border-2 border-blue-100 rounded-xl text-lg font-medium shadow-sm focus:border-blue-500 outline-none"
         value={selectedExerciseId}
@@ -207,7 +192,7 @@ export function ActiveWorkout() {
         ))}
       </select>
 
-      {/* --- HISTORY SECTION (NEU) --- */}
+      {/* History View */}
       {selectedExerciseId && history && history.length > 0 && (
         <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm">
           <h3 className="font-bold text-blue-800 mb-2">Letzte Leistungen:</h3>
@@ -230,7 +215,6 @@ export function ActiveWorkout() {
         </div>
       )}
 
-      {/* Eingabemaske */}
       {selectedExerciseId && (
         <div className="bg-white p-4 rounded-xl shadow-md border border-gray-100 space-y-6">
           <div className="flex justify-between px-2">
@@ -248,7 +232,6 @@ export function ActiveWorkout() {
         </div>
       )}
 
-      {/* Log Liste Aktuell */}
       <div className="space-y-2">
         {logs?.slice().reverse().map(log => (
           <div key={log.id} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center border-l-4 border-green-400">
