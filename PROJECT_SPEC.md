@@ -1,23 +1,26 @@
 # Project Specification
 
-## Sync-Strategie (Offline-First)
+## Sync-Strategie (Hybrid / Online-Start)
 
 ### 1. Status Erkennung
-- Die App muss aktiv auf `window.addEventListener('online')` und `('offline')` hören.
-- Ein visueller Banner zeigt an, wenn der User offline ist.
+* Die App nutzt `window.addEventListener('online'/'offline')`.
+* Ein visueller Indikator zeigt den Status an, blockiert aber nicht die UI (außer bei Features, die zwingend Online sein müssen).
 
-### 2. Speichern (Write)
-- **Immer:** Schreiben in Dexie.js (Lokale DB).
-- **Versuch:** Wenn Online -> Push zu Supabase.
-- **Fallback:** Wenn Offline oder Fehler -> Nur lokal markieren (`status: 'completed'`), User informieren ("Lokal gespeichert").
+### 2. Speichern (Write-Strategy)
+* **Primär:** Schreiben in Dexie.js (Lokale DB/Cache). Das sorgt für sofortiges UI-Feedback.
+* **Sekundär (Background):**
+    * Wenn **Online**: Versuch, den Datensatz sofort an Supabase zu pushen.
+    * Wenn **Offline/Fehler**: Datensatz lokal als `synced: false` (oder `status: 'completed_local'`) markieren.
+    * User-Feedback: "Gespeichert" (UI muss nicht unterscheiden, wo gespeichert wurde, solange es sicher ist).
 
-### 3. Re-Sync (Read/Upload)
-- **Trigger:** Beim App-Start (Mount) und wenn Status auf "Online" wechselt.
-- **Logik:**
-    1. Suche in Dexie nach Sessions mit `status: 'completed'`.
-    2. Prüfe, ob diese Sessions bereits in Supabase existieren (Check via ID).
-    3. Falls nicht in Supabase -> Upload Session + Logs.
-    4. Feedback an User (z.B. kleiner Toast "3 Trainings nachsynchronisiert").
+### 3. Laden & Re-Sync (Read-Strategy)
+* **Training Start:** Darf eine Online-Verbindung voraussetzen, um Templates/Historie zu laden.
+* **Im Training:** Muss offline-fähig sein (Daten kommen aus dem lokalen State/Cache).
+* **Re-Sync Trigger:** Beim App-Start oder Wechsel auf "Online":
+    1.  Prüfe Dexie auf nicht synchronisierte Einträge.
+    2.  Push zu Supabase.
+    3.  Bei Konflikten: Server gewinnt (oder letzte Änderung gewinnt, je nach Logik).
+    4.  Button für den User um einen Resync zu triggern (solange keine Gewissheit ist, dass die Daten auf dem Server angekommen sind)
 
 ## 4. Feature Spezifikation: Smart Workout Engine (Phase 3)
 
