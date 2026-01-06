@@ -13,9 +13,20 @@ Eine PWA, die primär offline funktioniert (Dexie.js) und Daten bei Verfügbarke
 ## ARBEITSWEISE
 1. **Source of Truth:** Der hochgeladene Code im Chat ist die einzige Wahrheit.
 2. **Status Check:** Prüfe immer zuerst `PROGRESS.md`, um den aktuellen Stand zu erkennen.
-3. **Offline-First:** Jedes Feature muss ohne Internet funktionieren. UI darf nicht blockieren.
+3. **Offline/Online:** Manche Feature sollten auch ohne Internet funktionieren. UI darf nicht blockieren.
 4. **UX/UI:** Entscheidungen trifft der User (Developer). Du lieferst technische Lösungen.
 5. **Security:** Keine `.env` Werte generieren.
+
+## CODE-STRUKTUR & LIMITS
+### Datei-Größen Richtlinien
+- **Soft Limit:** ~200-250 Zeilen
+    - **Aktion:** Aktiv prüfen: "Macht diese Datei zu viel?" (Single Responsibility Principle)
+    - Logik in Custom Hooks auslagern (z.B. `useWorkoutLogic`)
+    - UI in Sub-Komponenten auslagern (z.B. `ExerciseCard`)
+- **Hard Limit:** 400 Zeilen
+    - **Aktion:** Refactoring ist Pflicht
+    - Dateien dieser Größe sind schwer zu testen, zu lesen und fehleranfällig bei Merges
+- **Ausnahmen:** Reine Daten-Config-Dateien (z.B. große Arrays, Mappings) oder extrem zentrale Views (sollte vermieden werden)
 
 ## AKTUELLER FOKUS
 Wir arbeiten an der **Robustheit der Synchronisation**.

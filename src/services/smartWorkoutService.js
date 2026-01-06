@@ -1,27 +1,40 @@
 import { supabase } from '../supabaseClient';
 import { calculateTarget } from '../utils/progressionEngine';
-import { db } from '../db'; // Für lokalen Fallback oder falls wir Hybrid fahren wollen
+import { db } from '../db';
 
 /**
  * Holt das nächste "Smart Workout" basierend auf der Historie.
- * * Strategie:
- * 1. Wir gehen davon aus, dass der User ONLINE ist (wie besprochen).
- * 2. Wir laden die neuesten Configs & Logs direkt von Supabase für maximale Aktualität.
+ * Strategie: "Local First" Read
+ * 1. Prüfe lokale DB (Dexie) auf letztes Training (das ist immer aktuell, auch offline).
+ * 2. Fallback: Supabase (nur wenn lokal leer).
  */
 export const generateNextWorkout = async () => {
   try {
-    // 1. Letztes Training finden (um den Split-Tag zu bestimmen)
-    const { data: lastLogs, error: logError } = await supabase
-      .from('workout_logs')
-      .select('workout_name, date')
-      .order('date', { ascending: false })
-      .limit(1);
+    let lastRoutineName = null;
 
-    if (logError) throw logError;
-
-    // Default: Wenn noch nie trainiert wurde, starte mit dem ersten Split (meist "Push" oder Order 1)
-    let nextRoutineName = null;
+    // A. LOKALER CHECK (Priorität 1)
+    // Wir holen den aktuellsten Log aus Dexie
+    const lastLocalLog = await db.workout_logs.orderBy('date').reverse().first();
     
+    if (lastLocalLog) {
+      // Wichtig: In Dexie heißt das Feld oft 'workoutName' (camelCase), siehe ActiveWorkout.jsx
+      lastRoutineName = lastLocalLog.workoutName || lastLocalLog.workout_name;
+      console.log(`🧠 Smart Engine (Local): Letztes Training war '${lastRoutineName}'`);
+    } else {
+      // B. CLOUD FALLBACK (Priorität 2 - nur wenn lokal leer)
+      const { data: remoteLogs } = await supabase
+        .from('workout_logs')
+        .select('workout_name, date') // Hier heißt es 'workout_name'
+        .order('date', { ascending: false })
+        .limit(1);
+
+      if (remoteLogs && remoteLogs.length > 0) {
+        lastRoutineName = remoteLogs[0].workout_name;
+        console.log(`🧠 Smart Engine (Cloud): Letztes Training war '${lastRoutineName}'`);
+      }
+    }
+
+    // C. NÄCHSTE ROUTINE BESTIMMEN
     // Alle Routinen holen (sortiert nach Reihenfolge)
     const { data: routines, error: routineError } = await supabase
       .from('ref_routines')
@@ -31,23 +44,21 @@ export const generateNextWorkout = async () => {
     if (routineError) throw routineError;
     if (!routines || routines.length === 0) throw new Error("Keine Routinen (Templates) in der DB gefunden!");
 
-    if (lastLogs && lastLogs.length > 0) {
-      const lastRoutineName = lastLogs[0].workout_name;
+    let nextRoutineName = routines[0].name; // Default Start
+
+    if (lastRoutineName) {
       const lastIndex = routines.findIndex(r => r.name === lastRoutineName);
       
-      // Zyklischer Wechsel: Wenn letztes Training gefunden, nimm das nächste in der Liste
-      // Wenn letztes Training nicht in der Liste (z.B. alter Name), starte vorne.
+      // Zyklischer Wechsel
       if (lastIndex >= 0 && lastIndex < routines.length - 1) {
         nextRoutineName = routines[lastIndex + 1].name;
-      } else {
-        nextRoutineName = routines[0].name; // Reset auf Start (z.B. nach Leg Day wieder Push)
+      } else if (lastIndex === routines.length - 1) {
+        nextRoutineName = routines[0].name; // Loop zurück zum Start
       }
-    } else {
-      nextRoutineName = routines[0].name; // Erstes Training überhaupt
+      // Falls Name nicht gefunden (z.B. Umbenennung), bleiben wir beim Default
     }
 
-    console.log(`🧠 Smart Engine: Letztes Training war '${lastLogs?.[0]?.workout_name}'. Nächstes ist '${nextRoutineName}'`);
-
+    console.log(`🧠 Smart Engine: Plan '${nextRoutineName}' wird generiert.`);
     return await generateSpecificWorkout(nextRoutineName);
 
   } catch (error) {
@@ -56,11 +67,11 @@ export const generateNextWorkout = async () => {
   }
 };
 
-/**
- * Generiert einen Plan für eine spezifische Routine (z.B. "Push")
- */
+// ... generateSpecificWorkout bleibt unverändert ...
+// (Bitte den restlichen Code der Datei beibehalten, er ist hier nicht betroffen)
 export const generateSpecificWorkout = async (routineName) => {
-  // A. Alle notwendigen Referenzdaten parallel laden
+    // ... (unveränderter Code aus deiner Datei)
+    // A. Alle notwendigen Referenzdaten parallel laden
   const [
     routineRes,
     exercisesRes,

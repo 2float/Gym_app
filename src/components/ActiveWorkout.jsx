@@ -53,18 +53,43 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
   // Workout speichern
   const finishWorkout = async () => {
+    // 1. VALIDIERUNG: Check auf fehlende RPE bei erledigten Sätzen
+    const missingRpe = exercises.some(ex => 
+        ex.sets.some(s => s.completed) && (!ex.rpe || ex.rpe.trim() === "")
+    );
+
+    if (missingRpe) {
+        alert("⚠️ Bitte trage für alle Übungen mit erledigten Sätzen eine RPE ein (1-10)!");
+        return; // Abbruch
+    }
+
     setIsFinishing(true);
     const endTime = new Date();
     const durationMs = endTime - startTime;
 
-    const logEntry = {
+    // 2. DATEN AUFBEREITEN
+    // Filtere Übungen: Nur solche, wo mindestens 1 Satz completed ist
+    const validExercises = exercises
+        .map(ex => ({
+            ...ex,
+            sets: ex.sets.filter(s => s.completed) // Nur erledigte Sätze
+        }))
+        .filter(ex => ex.sets.length > 0); // Nur Übungen mit Sätzen
+
+    if (validExercises.length === 0) {
+        alert("Keine Sätze abgeschlossen. Training wird nicht gespeichert.");
+        setIsFinishing(false);
+        return;
+    }
+
+    // Basis-Objekt für Dexie (verwendet camelCase wie im Frontend gewohnt)
+    const logEntryLocal = {
       date: endTime.toISOString().split('T')[0],
-      workoutName,
+      workoutName, 
       duration_ms: durationMs,
-      exercises: exercises.map(ex => ({
+      exercises: validExercises.map(ex => ({
         name: ex.name,
         sets: ex.sets.length,
-        // Raw Data speichern
         reps: ex.sets.map(s => s.reps).join(';'), 
         weight: ex.sets.map(s => s.weight).join(';'),
         rpe: ex.rpe || "", 
@@ -74,22 +99,35 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     };
 
     try {
-      // 1. Dexie Save
-      const id = await db.workout_logs.add(logEntry);
-      console.log("Locally saved ID:", id);
+      // 3. DEXIE SAVE (Lokal)
+      const id = await db.workout_logs.add(logEntryLocal);
+      console.log("✅ Locally saved ID:", id);
 
-      // 2. Cloud Sync (Best Effort)
+      // 4. CLOUD SYNC (Best Effort)
       if (isOnline) {
-        const { synced, ...supabasePayload } = logEntry;
+        // MAPPING FÜR SUPABASE: camelCase -> snake_case
+        const supabasePayload = {
+            date: logEntryLocal.date,
+            workout_name: logEntryLocal.workoutName, // HIER WAR DER FEHLER
+            duration_ms: logEntryLocal.duration_ms,
+            exercises: logEntryLocal.exercises
+            // KEIN 'synced' Feld an Supabase senden
+            // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
+        };
+
         const { error } = await supabase.from('workout_logs').insert([supabasePayload]);
         
         if (!error) {
           await db.workout_logs.update(id, { synced: true });
-          console.log("Synced to Supabase!");
+          console.log("☁️ Synced to Supabase!");
+        } else {
+            console.error("❌ Supabase Upload Error:", error);
+            // Kein Throw, damit User im UI fertig wird -> Sync retry beim nächsten Start
         }
       }
     } catch (err) {
       console.error("Save failed:", err);
+      alert("Fehler beim Speichern! Bitte Screenshot machen.");
     }
 
     setTimeout(() => {
