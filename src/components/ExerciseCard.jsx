@@ -56,13 +56,15 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
             {exercise.targetDetails && (
               <div className="mt-1 flex flex-wrap gap-2">
                  {/* Progressions-Hinweis */}
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    exercise.targetDetails.hint.includes("Steigerung") ? "bg-green-100 text-green-700" :
-                    exercise.targetDetails.hint.includes("Halten") ? "bg-yellow-100 text-yellow-700" :
-                    "bg-blue-100 text-blue-700"
-                }`}>
-                    {exercise.targetDetails.hint}
-                </span>
+                {exercise.targetDetails.hint && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      exercise.targetDetails.hint.includes("Steigerung") ? "bg-green-100 text-green-700" :
+                      exercise.targetDetails.hint.includes("Halten") ? "bg-yellow-100 text-yellow-700" :
+                      "bg-blue-100 text-blue-700"
+                  }`}>
+                      {exercise.targetDetails.hint}
+                  </span>
+                )}
 
                 {/* Anzeige: Welches Gerät? (Wichtig für Kabelzug) */}
                 {exercise.equipment_names && (
@@ -74,7 +76,7 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
             )}
              
              {/* Letzte Werte */}
-             {exercise.targetDetails?.lastWeight !== "-" && (
+             {exercise.targetDetails?.lastWeight && exercise.targetDetails.lastWeight !== "-" && (
                  <div className="text-xs text-gray-400 mt-1">
                     Last: {exercise.targetDetails.lastWeight}kg x {exercise.targetDetails.lastReps}
                  </div>

@@ -20,7 +20,7 @@ Wir befinden uns hier. Das Ziel ist eine robuste, fehlerfreie App vor neuen Feat
 - [x] **Bugfix Sync/Upload:** Behoben werden muss das Problem, dass Workouts lokal da sind, aber nicht in Supabase landen (Folge: Smart Engine erkennt letztes Training nicht).
 - [x] **Speicher-Logik:** Nur *abgehakte* (completed) Sätze speichern. Leere/nicht gemachte Sätze verwerfen.
 - [x] **Validierung:** Speichern blockieren, wenn Sätze abgehakt sind, aber **keine RPE** eingetragen wurde.
-- [ ] **Daten-Qualität:** "Übung hinzufügen" muss ein Dropdown aus dem Katalog sein (keine Freitext-Fehler).
+- [x] **Daten-Qualität:** "Übung hinzufügen" muss ein Dropdown aus dem Katalog sein (keine Freitext-Fehler).
 
 #### Prio 2: Workflow & Usability ⚡
 - [ ] **Routine-Wahl:** Im Dashboard nicht nur das empfohlene Training, sondern Auswahl aller Templates ermöglichen.

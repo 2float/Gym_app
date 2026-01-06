@@ -3,6 +3,8 @@ import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
 import ExerciseCard from './ExerciseCard';
+import ExerciseSelector from './ExerciseSelector';
+import ErrorBoundary from './ErrorBoundary';
 
 const ActiveWorkout = ({ onFinish, initialData }) => {
   const [workoutName, setWorkoutName] = useState(initialData?.routineName || "Freies Training");
@@ -12,7 +14,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
   const [exercises, setExercises] = useState(initialData?.exercises || []);
   
   // UI State
-  const [newExerciseName, setNewExerciseName] = useState("");
+  const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   
   const isOnline = useOnlineStatus();
@@ -39,16 +41,49 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     }
   };
 
-  // Neue Übung hinzufügen (Manuell) -> TODO: Später Dropdown
-  const handleAddExercise = () => {
-    if (!newExerciseName.trim()) return;
+  // Neue Übung aus Katalog hinzufügen
+  const handleExerciseSelect = async (selectedExercise) => {
+    // History laden, um Default-Werte zu finden
+    const allLogs = await db.workout_logs.orderBy('date').reverse().toArray();
+    
+    let lastWeight = "";
+    let lastReps = "";
+    let targetDetails = null;
+
+    // Suche nach der letzten Verwendung dieser Übung
+    for (const log of allLogs) {
+      const foundExercise = log.exercises?.find(ex => ex.name === selectedExercise.name);
+      if (foundExercise) {
+        // Nimm die letzten Werte (erste im neuesten Log)
+        const weights = foundExercise.weight?.split(';').filter(w => w);
+        const reps = foundExercise.reps?.split(';').filter(r => r);
+        
+        if (weights?.length > 0 && reps?.length > 0) {
+          lastWeight = weights[weights.length - 1]; // Letzter Satz
+          lastReps = reps[reps.length - 1];
+          
+          targetDetails = {
+            lastWeight,
+            lastReps,
+            lastDate: log.date
+          };
+        }
+        break; // Stoppe bei erstem Fund (neuestes Log)
+      }
+    }
+
+    // Füge Übung mit Defaults hinzu
     setExercises([...exercises, { 
-      name: newExerciseName, 
-      sets: [{ weight: '', reps: '', completed: false }],
-      // WICHTIG: Leeres targetDetails Objekt, damit UI nicht crasht
-      targetDetails: null 
+      name: selectedExercise.name,
+      muscle_group: selectedExercise.muscle_group,
+      sets: [{ 
+        weight: lastWeight, // Pre-fill mit letztem Gewicht
+        reps: lastReps,     // Pre-fill mit letzten Reps
+        completed: false 
+      }],
+      targetDetails // Zeigt "Last: X kg x Y" an
     }]);
-    setNewExerciseName("");
+    setShowExerciseSelector(false);
   };
 
   // Workout speichern
@@ -164,32 +199,30 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
       {/* EXERCISE LIST */}
       {exercises.map((exercise, index) => (
-        <ExerciseCard 
-            key={exercise.id || index} // Fallback Key, falls ID fehlt
-            exercise={exercise}
-            onUpdate={(updatedEx) => handleExerciseUpdate(index, updatedEx)}
-            onDelete={() => handleDeleteExercise(index)}
-        />
+        <ErrorBoundary key={exercise.id || index} title="Fehler beim Laden der Übung">
+          <ExerciseCard 
+              exercise={exercise}
+              onUpdate={(updatedEx) => handleExerciseUpdate(index, updatedEx)}
+              onDelete={() => handleDeleteExercise(index)}
+          />
+        </ErrorBoundary>
       ))}
 
-      {/* MANUAL ADD (Provisorisch) */}
-      <div className="bg-white p-4 rounded-xl shadow-sm">
-         <div className="flex gap-2">
-            <input 
-                type="text" 
-                placeholder="Übung hinzufügen..." 
-                className="flex-1 p-3 border rounded-lg bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"
-                value={newExerciseName}
-                onChange={(e) => setNewExerciseName(e.target.value)}
-            />
-            <button 
-                onClick={handleAddExercise}
-                className="bg-gray-800 text-white px-6 rounded-lg font-bold hover:bg-gray-900"
-            >
-                +
-            </button>
-         </div>
-      </div>
+      {/* ADD EXERCISE BUTTON */}
+      <button 
+        onClick={() => setShowExerciseSelector(true)}
+        className="w-full bg-white p-4 rounded-xl shadow-sm text-gray-600 font-semibold hover:bg-gray-50 border-2 border-dashed border-gray-300 hover:border-blue-400 transition-all"
+      >
+        + Übung hinzufügen
+      </button>
+
+      {/* EXERCISE SELECTOR MODAL */}
+      {showExerciseSelector && (
+        <ExerciseSelector 
+          onSelect={handleExerciseSelect}
+          onCancel={() => setShowExerciseSelector(false)}
+        />
+      )}
 
       {/* FOOTER ACTION */}
       <div className="fixed bottom-4 left-4 right-4 max-w-md mx-auto">

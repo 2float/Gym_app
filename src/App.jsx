@@ -1,63 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { db } from './db';
-import { supabase } from './supabaseClient'; // <--- DAS HAT GEFEHLT!
+import React, { useState } from 'react';
 import ActiveWorkout from './components/ActiveWorkout';
-import useOnlineStatus from './hooks/useOnlineStatus';
 import { generateNextWorkout } from './services/smartWorkoutService';
+import { useApp } from './contexts/AppContext';
 
 
 function App() {
-  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
-  const [history, setHistory] = useState([]);
+  const { history, isOnline, isWorkoutActive, setIsWorkoutActive } = useApp();
   
   // NEU: Smart Features State
   const [smartPlan, setSmartPlan] = useState(null); // Speichert den generierten Plan
   const [isLoadingPlan, setIsLoadingPlan] = useState(false); // Lade-Spinner
   const [errorMsg, setErrorMsg] = useState("");
-
-  const isOnline = useOnlineStatus();
-
-  // Load history from Dexie
-  useEffect(() => {
-    const loadHistory = async () => {
-      const logs = await db.workout_logs.orderBy('date').reverse().toArray();
-      setHistory(logs);
-    };
-    loadHistory();
-  }, [isWorkoutActive]);
-
-  // Sync Logic (Background)
-  useEffect(() => {
-    const initData = async () => {
-      // 1. Lokale Daten laden
-      let localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
-      
-      // 2. Down-Sync Check: Wenn lokal leer, aber online -> Hol Daten aus der Cloud
-      if (localLogs.length === 0 && isOnline) {
-        console.log("🕳 Lokale DB leer. Starte Down-Sync aus der Cloud...");
-        const { data: cloudLogs, error } = await supabase
-          .from('workout_logs')
-          .select('*')
-          .order('date', { ascending: false });
-
-        if (!error && cloudLogs.length > 0) {
-          // Wichtig: IDs beibehalten oder neu vergeben? 
-          // Da Dexie auto-increment hat, aber wir UUIDs aus Supabase haben,
-          // speichern wir sie idealerweise so, wie sie kommen.
-          // Wir müssen sicherstellen, dass Dexie die UUID akzeptiert oder wir mappen sie.
-          // Fürs erste mappen wir die Cloud-Daten einfach rein:
-          
-          await db.workout_logs.bulkPut(cloudLogs);
-          localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
-          console.log(`📥 ${localLogs.length} Logs synchronisiert!`);
-        }
-      }
-
-      setHistory(localLogs);
-    };
-
-    initData();
-  }, [isWorkoutActive, isOnline]); // Auch bei Online-Status-Wechsel prüfen
 
   // NEU: Smart Workout Start
   const handleStartSmartWorkout = async () => {
