@@ -1,25 +1,32 @@
 # Projektfortschritt
 
-## Status: 🟡 Bugfixing / Hardening
-**Aktueller Fokus:** Offline-Indikator & Zuverlässiger Sync-Mechanismus
+## Status: 🟡 Refactoring & Bugfixing
+**Aktueller Fokus:** Stabilisierung Core-Loop, Validierung & Sync-Logik
 
 ## Roadmap
 
-### Phase 1: Setup & Grundgerüst (Erledigt ✅)
-- [x] Projekt-Initialisierung (Vite, React, Tailwind)
-- [x] Supabase & Dexie Setup
-- [x] Deployment Pipeline (GitHub Pages)
-- [x] PWA Installation (Service Worker läuft)
+### Phase 1 & 2: Basis (Erledigt ✅)
+- [x] Setup, Dexie, Supabase, PWA, Offline-Sync Basic
 
-### Phase 2: Core Loop & Robustness (In Arbeit 🚧)
-- [x] Active Workout UI (Basis)
-- [x] Sätze lokal loggen (Dexie)
-- [x] Feature: Historie im Training anzeigen
-- [ ] **Fix:** Visueller Online/Offline Status Indikator
-- [ ] **Fix:** "Finish Workout" darf bei Offline nicht hängen bleiben
-- [ ] **Fix:** Auto-Sync beim App-Start (Hochladen von 'completed' Sessions, die noch lokal liegen)
+### Phase 3: Smart Features (Erledigt ✅)
+- [x] Datenmodell & Import
+- [x] Smart Engine Algorithmus
+- [x] Refactoring: Component Splitting (`ExerciseCard`)
 
-### Phase 3: Features
-- [ ] Workout Templates (Routinen erstellen & laden)
-- [ ] Bearbeiten von vergangenen Logs
-- [ ] Erweiterte Statistiken
+### Phase 4: Hardening & UX (Aktuell 🚧)
+Wir befinden uns hier. Das Ziel ist eine robuste, fehlerfreie App vor neuen Features.
+
+#### Prio 1: Kritische Logik & Daten-Integrität 🛑
+- [ ] **Bugfix Sync/Upload:** Behoben werden muss das Problem, dass Workouts lokal da sind, aber nicht in Supabase landen (Folge: Smart Engine erkennt letztes Training nicht).
+- [ ] **Speicher-Logik:** Nur *abgehakte* (completed) Sätze speichern. Leere/nicht gemachte Sätze verwerfen.
+- [ ] **Validierung:** Speichern blockieren, wenn Sätze abgehakt sind, aber **keine RPE** eingetragen wurde.
+- [ ] **Daten-Qualität:** "Übung hinzufügen" muss ein Dropdown aus dem Katalog sein (keine Freitext-Fehler).
+
+#### Prio 2: Workflow & Usability ⚡
+- [ ] **Routine-Wahl:** Im Dashboard nicht nur das empfohlene Training, sondern Auswahl aller Templates ermöglichen.
+- [ ] **UI Focus:** Übersichtliche Liste der Übungen, Details erst beim Draufklicken (Accordion/Focus Mode).
+
+#### Prio 3: Nice to Have 🎨
+- [ ] Rest Timer
+- [ ] Erweiterte History-Details während des Trainings
+- [ ] Editierbare Historie (Vergangene Logs korrigieren)
