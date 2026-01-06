@@ -7,6 +7,8 @@ DROP TABLE IF EXISTS ref_routines CASCADE;
 DROP TABLE IF EXISTS ref_exercises CASCADE;
 DROP TABLE IF EXISTS ref_equipment CASCADE;
 DROP TABLE IF EXISTS app_config CASCADE;
+-- Alte Helper Funktion auch wegputzen, falls vorhanden
+DROP FUNCTION IF EXISTS link_exercise(TEXT, TEXT, INT);
 
 -- =================================================================
 -- 2. SCHEMA DEFINITION (Tabellen neu anlegen)
@@ -19,7 +21,7 @@ CREATE TABLE app_config (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Equipment (Geräte & Gewichte)
+-- Equipment
 CREATE TABLE ref_equipment (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
@@ -27,7 +29,7 @@ CREATE TABLE ref_equipment (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Exercises (Übungskatalog)
+-- Exercises
 CREATE TABLE ref_exercises (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
@@ -35,11 +37,11 @@ CREATE TABLE ref_exercises (
     default_sets INT DEFAULT 3,
     min_reps INT DEFAULT 8,
     max_reps INT DEFAULT 12,
-    equipment_names TEXT[], -- Wir speichern Namen als Referenz für einfachen Match
+    equipment_names TEXT[], 
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Routines (Templates)
+-- Routines
 CREATE TABLE ref_routines (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
@@ -57,7 +59,7 @@ CREATE TABLE ref_routine_exercises (
     UNIQUE(routine_id, exercise_id)
 );
 
--- Logs (Historie)
+-- Logs
 CREATE TABLE workout_logs (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     date DATE NOT NULL,
@@ -69,7 +71,27 @@ CREATE TABLE workout_logs (
 );
 
 -- =================================================================
--- 3. SECURITY (Row Level Security aktivieren)
+-- 3. HELPER FUNCTION (Zum Verknüpfen)
+-- =================================================================
+CREATE OR REPLACE FUNCTION link_exercise(p_routine_name TEXT, p_exercise_name TEXT, p_sort_order INT)
+RETURNS VOID AS $$
+DECLARE
+    v_r_id UUID;
+    v_e_id UUID;
+BEGIN
+    SELECT id INTO v_r_id FROM ref_routines WHERE name = p_routine_name;
+    SELECT id INTO v_e_id FROM ref_exercises WHERE name = p_exercise_name;
+    
+    IF v_r_id IS NOT NULL AND v_e_id IS NOT NULL THEN
+        INSERT INTO ref_routine_exercises (routine_id, exercise_id, sort_order)
+        VALUES (v_r_id, v_e_id, p_sort_order)
+        ON CONFLICT (routine_id, exercise_id) DO UPDATE SET sort_order = EXCLUDED.sort_order;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =================================================================
+-- 4. SECURITY (RLS)
 -- =================================================================
 ALTER TABLE app_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ref_equipment ENABLE ROW LEVEL SECURITY;
@@ -78,7 +100,6 @@ ALTER TABLE ref_routines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ref_routine_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_logs ENABLE ROW LEVEL SECURITY;
 
--- Policy: Alles offen (Public Read/Write) für Phase 3 Testing
 CREATE POLICY "Public Access" ON app_config FOR ALL USING (true);
 CREATE POLICY "Public Access" ON ref_equipment FOR ALL USING (true);
 CREATE POLICY "Public Access" ON ref_exercises FOR ALL USING (true);
@@ -87,7 +108,7 @@ CREATE POLICY "Public Access" ON ref_routine_exercises FOR ALL USING (true);
 CREATE POLICY "Public Access" ON workout_logs FOR ALL USING (true);
 
 -- =================================================================
--- 4. DATA SEEDING (Deine CSV Daten importieren)
+-- 5. DATA SEEDING
 -- =================================================================
 
 -- A. CONFIG
@@ -96,10 +117,9 @@ INSERT INTO app_config (key, value) VALUES
 ('rpe_ziel_max', '9'),
 ('plateau_schwelle_einheiten', '3'),
 ('pause_tage_fuer_deload', '7'),
-('deload_faktor', '0.9'); -- Komma zu Punkt korrigiert
+('deload_faktor', '0.9');
 
--- B. EQUIPMENT (Aus 'Geräte.csv')
--- Hinweis: Habe Kommas in Dezimalzahlen durch Punkte ersetzt für SQL Array Syntax
+-- B. EQUIPMENT
 INSERT INTO ref_equipment (name, weights) VALUES
 ('KH', '{2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60}'),
 ('LH', '{20,22.5,25,27.5,30,32.5,35,37.5,40,42.5,45,47.5,50,52.5,55,57.5,60,62.5,65,67.5,70,72.5,75,77.5,80,82.5,85,87.5,90,92.5,95,97.5,100,102.5,105,107.5,110,112.5,115,117.5,120,122.5,125,127.5,130,132.5,135,137.5,140,142.5,145,147.5,150}'),
@@ -117,9 +137,7 @@ INSERT INTO ref_equipment (name, weights) VALUES
 ('Adductor_Maschine', '{5,7.5,10,12,14.5,17,19,21.5,24,26,28.5,31,33,35.5,38,40,42.5,45,47,49.5,52,54,56.5,59,61,63.5,66,68,70.5,73,75,77.5,80,82,84.5,87,89,91.5,94,96,98.5,101,103,105.5,108,110,112.5,115,117,119.5,122,124,126.5,129,131,133.5,136,138,140.5,143}'),
 ('Wadenheben_Maschine', '{5,7.5,10,10,12.5,15,15,17.5,20,25,27.5,30,35,37.5,40,45,47.5,50,55,57.5,60,65,67.5,70,75,77.5,80,85,87.5,90,95,97.5,100,105,107.5,110,115,117.5,120,125,127.5,130,135,137.5,140,145,147.5,150,155,157.5,160,165,167.5,170,175,177.5,180,185,187.5,190,195,197.5,200}');
 
-
--- C. EXERCISES (Aus 'Katalog.csv')
--- Hinweis: Semikolons in Gerätenamen wurden zu Array-Syntax: 'A;B' -> '{A,B}'
+-- C. EXERCISES
 INSERT INTO ref_exercises (name, category, default_sets, min_reps, max_reps, equipment_names) VALUES
 ('Bankdrücken LH', 'compound', 4, 8, 12, '{LH}'),
 ('Schrägbank LH', 'compound', 3, 8, 12, '{LH}'),
@@ -155,63 +173,36 @@ INSERT INTO ref_exercises (name, category, default_sets, min_reps, max_reps, equ
 ('Bird Dog', 'isolation', 3, 10, 50, '{bodyweight}'),
 ('Situps gekreuzt', 'isolation', 3, 10, 50, '{bodyweight}');
 
-
--- D. TEMPLATES (Aus 'Templates.csv')
+-- D. TEMPLATES
 INSERT INTO ref_routines (name, sort_order) VALUES
 ('Push', 1),
 ('Pull', 2),
 ('Beine', 3);
 
--- E. LINK TEMPLATES (Logik zum Verknüpfen)
-DO $$
-DECLARE
-    -- Funktion zum Einfügen (Inline)
-    -- Da wir keine permanente Funktion erstellen wollen, nutzen wir Logik im Block
-    r_push UUID;
-    r_pull UUID;
-    r_beine UUID;
-    
-    -- Helper Function Simulation via Procedure Call
-    PROCEDURE link_ex(p_routine TEXT, p_exercise TEXT, p_order INT) IS
-    DECLARE
-        v_r_id UUID;
-        v_e_id UUID;
-    BEGIN
-        SELECT id INTO v_r_id FROM ref_routines WHERE name = p_routine;
-        SELECT id INTO v_e_id FROM ref_exercises WHERE name = p_exercise;
-        
-        IF v_r_id IS NOT NULL AND v_e_id IS NOT NULL THEN
-            INSERT INTO ref_routine_exercises (routine_id, exercise_id, sort_order)
-            VALUES (v_r_id, v_e_id, p_order)
-            ON CONFLICT DO NOTHING;
-        END IF;
-    END;
-BEGIN
-    -- Push
-    CALL link_ex('Push', 'Bankdrücken LH', 1);
-    CALL link_ex('Push', 'Schrägbank LH', 2);
-    CALL link_ex('Push', 'Schulterdrücken KH', 3);
-    CALL link_ex('Push', 'Seitheben KH', 4);
-    CALL link_ex('Push', 'Trizeps Kabel', 5);
-    CALL link_ex('Push', 'Cable Crunch', 6);
-    CALL link_ex('Push', 'Plank', 7);
+-- E. LINK TEMPLATES
+-- Push
+SELECT link_exercise('Push', 'Bankdrücken LH', 1);
+SELECT link_exercise('Push', 'Schrägbank LH', 2);
+SELECT link_exercise('Push', 'Schulterdrücken KH', 3);
+SELECT link_exercise('Push', 'Seitheben KH', 4);
+SELECT link_exercise('Push', 'Trizeps Kabel', 5);
+SELECT link_exercise('Push', 'Cable Crunch', 6);
+SELECT link_exercise('Push', 'Plank', 7);
 
-    -- Pull
-    CALL link_ex('Pull', 'Latzug', 1);
-    CALL link_ex('Pull', 'Rudern LH', 2);
-    CALL link_ex('Pull', 'Rudern Kabel', 3); 
-    CALL link_ex('Pull', 'Facepulls', 4);
-    CALL link_ex('Pull', 'Bizepscurls KH gedreht', 5);
-    CALL link_ex('Pull', 'Bizepscurls KH gerade', 6);
-    CALL link_ex('Pull', 'Oblique Crunch Maschine', 7);
-    CALL link_ex('Pull', 'Dead Bug', 8);
-
-    -- Beine
-    CALL link_ex('Beine', 'Bulgarian Split Squat KH', 1);
-    CALL link_ex('Beine', 'Einbeiniges Kreuzheben KH', 2);
-    CALL link_ex('Beine', 'Adduktoren Maschine', 3);
-    CALL link_ex('Beine', 'Abduktoren Maschine', 4);
-    CALL link_ex('Beine', 'Wadenheben stehend', 5);
-    CALL link_ex('Beine', 'Situps Schrägbank', 6);
-    CALL link_ex('Beine', 'Side Plank', 7);
-END $$;
+-- Pull
+SELECT link_exercise('Pull', 'Latzug', 1);
+SELECT link_exercise('Pull', 'Rudern LH', 2);
+SELECT link_exercise('Pull', 'Rudern Kabel', 3);
+SELECT link_exercise('Pull', 'Facepulls', 4);
+SELECT link_exercise('Pull', 'Bizepscurls KH gedreht', 5);
+SELECT link_exercise('Pull', 'Bizepscurls KH gerade', 6);
+SELECT link_exercise('Pull', 'Oblique Crunch Maschine', 7);
+SELECT link_exercise('Pull', 'Dead Bug', 8);
+-- Beine
+SELECT link_exercise('Beine', 'Bulgarian Split Squat KH', 1);
+SELECT link_exercise('Beine', 'Einbeiniges Kreuzheben KH', 2);
+SELECT link_exercise('Beine', 'Adduktoren Maschine', 3);
+SELECT link_exercise('Beine', 'Abduktoren Maschine', 4);
+SELECT link_exercise('Beine', 'Wadenheben stehend', 5);
+SELECT link_exercise('Beine', 'Situps Schrägbank', 6);
+SELECT link_exercise('Beine', 'Side Plank', 7);
