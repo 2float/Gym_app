@@ -27,6 +27,29 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Auto-Collapse: Wenn eine Übung fertig ist (alle Sets + RPE), klappt sie zu und nächste öffnet sich
+  useEffect(() => {
+    if (expandedExerciseIndex === null || exercises.length === 0) return;
+
+    const currentExercise = exercises[expandedExerciseIndex];
+    if (!currentExercise) return;
+
+    // Prüfe ob Übung "fertig" ist
+    const allSetsCompleted = currentExercise.sets.every(set => set.completed);
+    const hasRPE = currentExercise.rpe && currentExercise.rpe.trim() !== '';
+    
+    if (allSetsCompleted && hasRPE) {
+      // Übung ist fertig → öffne nächste
+      const nextIndex = expandedExerciseIndex + 1;
+      if (nextIndex < exercises.length) {
+        setTimeout(() => setExpandedExerciseIndex(nextIndex), 300); // Kurze Verzögerung für UX
+      } else {
+        // Alle Übungen fertig → schließe alles
+        setTimeout(() => setExpandedExerciseIndex(null), 300);
+      }
+    }
+  }, [exercises, expandedExerciseIndex]);
+
   // --- ACTIONS ---
 
   // Update einer einzelnen Übung in der Liste (wird von ExerciseCard aufgerufen)
@@ -143,13 +166,23 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
       // 4. CLOUD SYNC (Best Effort)
       if (isOnline) {
+        // Lokale Zeit als "naive UTC" speichern (wie beim Import)
+        const localTime = new Date(endTime);
+        const year = localTime.getFullYear();
+        const month = String(localTime.getMonth() + 1).padStart(2, '0');
+        const day = String(localTime.getDate()).padStart(2, '0');
+        const hours = String(localTime.getHours()).padStart(2, '0');
+        const minutes = String(localTime.getMinutes()).padStart(2, '0');
+        const seconds = String(localTime.getSeconds()).padStart(2, '0');
+        const naiveTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
+        
         // MAPPING FÜR SUPABASE: camelCase -> snake_case
         const supabasePayload = {
-            date: endTime.toISOString().split('T')[0], // Nur Datum für DATE-Spalte (z.B. "2026-01-07")
+            date: naiveTimestamp, // Lokale Zeit als UTC (naive timestamp)
             workout_name: logEntryLocal.workoutName,
             duration_ms: logEntryLocal.duration_ms,
             exercises: logEntryLocal.exercises
-            // created_at wird automatisch von PostgreSQL mit vollem Timestamp gesetzt
+            // created_at wird weiterhin automatisch gesetzt
             // KEIN 'synced' Feld an Supabase senden
             // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
         };

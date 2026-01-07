@@ -218,23 +218,51 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
         </button>
 
         {/* FOOTER: RPE & Notes */}
-        <div className="mt-4 pt-3 border-t border-gray-100 flex gap-3">
-             <div className="w-1/3">
-                <label className="text-xs text-gray-400 font-semibold block mb-1">RPE (1-10)</label>
-                <input 
-                    type="number" 
-                    max="10"
-                    placeholder="-"
-                    value={exercise.rpe || ''}
-                    onChange={(e) => handleMetaUpdate('rpe', e.target.value)}
-                    className="w-full p-2 text-center border rounded-lg bg-gray-50 text-sm"
-                />
+        <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
+             <div>
+                <label className="text-xs text-gray-400 font-semibold block mb-2">RPE (Anstrengung 1-10)</label>
+                <div className="space-y-2">
+                  {/* Obere Reihe: 1-5 (selten genutzt) */}
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 4, 5].map(value => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleMetaUpdate('rpe', value.toString())}
+                        className={`flex-1 py-2 rounded-lg font-semibold text-xs transition-all ${
+                          exercise.rpe === value.toString()
+                            ? 'bg-blue-500 text-white shadow-md'
+                            : 'bg-gray-50 text-gray-400 hover:bg-gray-100 border border-gray-200'
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Untere Reihe: 6-10 (häufig genutzt) */}
+                  <div className="flex gap-1.5">
+                    {[6, 7, 8, 9, 10].map(value => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleMetaUpdate('rpe', value.toString())}
+                        className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${
+                          exercise.rpe === value.toString()
+                            ? 'bg-blue-500 text-white shadow-md scale-105'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
              </div>
-             <div className="w-2/3">
+             <div>
                 <label className="text-xs text-gray-400 font-semibold block mb-1">Notiz</label>
                 <input 
                     type="text" 
-                    placeholder="..."
+                    placeholder="Optional: Bemerkungen zum Satz..."
                     value={exercise.note || ''}
                     onChange={(e) => handleMetaUpdate('note', e.target.value)}
                     className="w-full p-2 border rounded-lg bg-gray-50 text-sm"

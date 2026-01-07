@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
-import { useDataSync } from '../hooks/useDataSync';
 
 const AppContext = createContext();
 
@@ -12,7 +11,6 @@ export function AppProvider({ children }) {
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [isSyncingManually, setIsSyncingManually] = useState(false);
   const isOnline = useOnlineStatus();
-  const isSyncing = useDataSync(); // Background sync for reference data
 
   // Load last sync time from localStorage
   useEffect(() => {
@@ -24,39 +22,78 @@ export function AppProvider({ children }) {
 
   // Load workout history from Dexie + Cloud Sync
   useEffect(() => {
+    let isCancelled = false; // Cleanup flag für React Strict Mode
+    
     const initData = async () => {
       let localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
       
-      // Down-Sync: If local is empty but online -> Fetch from cloud
-      if (localLogs.length === 0 && isOnline) {
-        console.log("🕳 Lokale DB leer. Starte Down-Sync aus der Cloud...");
+      // Versuche immer zu syncen wenn online
+      if (isOnline && !isCancelled) {
+        console.log("🔄 Lade aktuelle Daten aus der Cloud...");
         const { data: cloudLogs, error } = await supabase
           .from('workout_logs')
-          .select('id, workout_name, duration_ms, exercises, created_at')
-          .order('created_at', { ascending: false });
+          .select('id, workout_name, duration_ms, exercises, date')
+          .order('date', { ascending: false });
 
-        if (!error && cloudLogs.length > 0) {
-          // Map created_at to date for local storage
+        if (!error && cloudLogs && cloudLogs.length > 0 && !isCancelled) {
+          // Map workout_name to workoutName for local storage
           const mappedLogs = cloudLogs.map(log => ({
             ...log,
-            date: log.created_at,
             workoutName: log.workout_name
           }));
+          await db.workout_logs.clear();
           await db.workout_logs.bulkPut(mappedLogs);
           localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
-          console.log(`📥 ${localLogs.length} Logs synchronisiert!`);
-          
-          // Update last sync time
+          console.log(`📥 ${localLogs.length} Workout Logs synchronisiert!`);
+        } else if (error) {
+          console.warn("⚠️ Cloud-Sync fehlgeschlagen, nutze lokale Daten:", error.message);
+        }
+
+        // Sync auch Referenzdaten (wie beim Manual Sync)
+        if (!isCancelled) {
+          const [exercisesRes, routinesRes, equipmentRes] = await Promise.all([
+            supabase.from('ref_exercises').select('*'),
+            supabase.from('ref_routines').select('*'),
+            supabase.from('ref_equipment').select('*')
+          ]);
+
+          if (exercisesRes.data && !isCancelled) {
+            await db.ref_exercises.clear();
+            await db.ref_exercises.bulkPut(exercisesRes.data);
+            console.log(`📚 ${exercisesRes.data.length} Übungen synchronisiert`);
+          }
+          if (routinesRes.data && !isCancelled) {
+            await db.ref_routines.clear();
+            await db.ref_routines.bulkPut(routinesRes.data);
+            console.log(`📋 ${routinesRes.data.length} Routinen synchronisiert`);
+          }
+          if (equipmentRes.data && !isCancelled) {
+            await db.ref_equipment.clear();
+            await db.ref_equipment.bulkPut(equipmentRes.data);
+            console.log(`🏗️ ${equipmentRes.data.length} Equipment-Items synchronisiert`);
+          }
+        }
+
+        // Update last sync time
+        if (!isCancelled) {
           const now = new Date();
           setLastSyncTime(now);
           localStorage.setItem('lastSyncTime', now.toISOString());
         }
+      } else if (!isOnline) {
+        console.log(`📴 Offline - ${localLogs.length} Workout Logs aus lokalem Cache geladen`);
       }
 
-      setHistory(localLogs);
+      if (!isCancelled) {
+        setHistory(localLogs);
+      }
     };
 
     initData();
+    
+    return () => {
+      isCancelled = true; // Cleanup: Verhindere State-Updates nach Unmount
+    };
   }, [isWorkoutActive, isOnline]);
 
   // Reload history after workout
@@ -79,15 +116,14 @@ export function AppProvider({ children }) {
       // 1. Workout Logs von Cloud holen
       const { data: cloudLogs, error: logsError } = await supabase
         .from('workout_logs')
-        .select('id, workout_name, duration_ms, exercises, created_at')
-        .order('created_at', { ascending: false });
+        .select('id, workout_name, duration_ms, exercises, date')
+        .order('date', { ascending: false });
 
       if (!logsError && cloudLogs?.length > 0) {
         await db.workout_logs.clear(); // Clear old data
-        // Map created_at to date for local storage
+        // Map workout_name to workoutName for local storage
         const mappedLogs = cloudLogs.map(log => ({
           ...log,
-          date: log.created_at,
           workoutName: log.workout_name
         }));
         await db.workout_logs.bulkPut(mappedLogs);
@@ -139,7 +175,6 @@ export function AppProvider({ children }) {
   const value = {
     history,
     isOnline,
-    isSyncing,
     isWorkoutActive,
     setIsWorkoutActive,
     refreshHistory,

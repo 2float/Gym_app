@@ -250,10 +250,10 @@ function App() {
                   // Formatiere Dauer
                   const durationMin = log.duration_ms ? Math.round(log.duration_ms / 60000) : null;
                   
-                  // Formatiere Datum + Uhrzeit
+                  // Formatiere Datum + Uhrzeit (UTC forcieren, um Timezone-Shift zu vermeiden)
                   const workoutDate = new Date(log.date);
-                  const dateStr = workoutDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
-                  const timeStr = workoutDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = workoutDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
+                  const timeStr = workoutDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
 
                   return (
                     <div key={log.id || log.date} className="bg-white p-5 rounded-xl shadow-md hover:shadow-lg transition-all border border-gray-100 hover:border-blue-200 group">

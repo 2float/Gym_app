@@ -39,24 +39,36 @@ export const generateNextWorkout = async () => {
     let lastRoutineName = null;
 
     // A. LOKALER CHECK (Priorität 1)
-    // Wir holen den aktuellsten Log aus Dexie (sortiert nach vollständigem Timestamp)
-    const lastLocalLog = await db.workout_logs.orderBy('date').reverse().first();
+    // Hole die letzten Workouts und finde die letzten 2 verschiedenen Typen
+    const recentLogs = await db.workout_logs.orderBy('date').reverse().limit(10).toArray();
     
-    if (lastLocalLog) {
-      // Wichtig: In Dexie heißt das Feld oft 'workoutName' (camelCase), siehe ActiveWorkout.jsx
-      lastRoutineName = lastLocalLog.workoutName || lastLocalLog.workout_name;
-      console.log(`🧠 Smart Engine (Local): Letztes Training war '${lastRoutineName}'`);
-    } else {
-      // B. CLOUD FALLBACK (Priorität 2 - nur wenn lokal leer)
+    const uniqueWorkouts = [];
+    for (const log of recentLogs) {
+      const workoutName = log.workoutName || log.workout_name;
+      if (!uniqueWorkouts.includes(workoutName)) {
+        uniqueWorkouts.push(workoutName);
+      }
+      if (uniqueWorkouts.length === 2) break; // Wir haben die letzten 2 verschiedenen gefunden
+    }
+    
+    console.log(`🧠 Smart Engine: Letzte 2 verschiedene Workouts:`, uniqueWorkouts);
+
+    // B. CLOUD FALLBACK (nur wenn lokal keine Daten)
+    if (uniqueWorkouts.length === 0) {
       const { data: remoteLogs } = await supabase
         .from('workout_logs')
-        .select('workout_name, created_at')
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .select('workout_name, date')
+        .order('date', { ascending: false })
+        .limit(10);
 
       if (remoteLogs && remoteLogs.length > 0) {
-        lastRoutineName = remoteLogs[0].workout_name;
-        console.log(`🧠 Smart Engine (Cloud): Letztes Training war '${lastRoutineName}'`);
+        for (const log of remoteLogs) {
+          if (!uniqueWorkouts.includes(log.workout_name)) {
+            uniqueWorkouts.push(log.workout_name);
+          }
+          if (uniqueWorkouts.length === 2) break;
+        }
+        console.log(`🧠 Smart Engine (Cloud Fallback):`, uniqueWorkouts);
       }
     }
 
@@ -70,18 +82,33 @@ export const generateNextWorkout = async () => {
     if (routineError) throw routineError;
     if (!routines || routines.length === 0) throw new Error("Keine Routinen (Templates) in der DB gefunden!");
 
-    let nextRoutineName = routines[0].name; // Default Start
+    let nextRoutineName;
 
-    if (lastRoutineName) {
-      const lastIndex = routines.findIndex(r => r.name === lastRoutineName);
-      
-      // Zyklischer Wechsel
+    if (uniqueWorkouts.length === 0) {
+      // Keine History → starte mit erster Routine
+      nextRoutineName = routines[0].name;
+      console.log(`🆕 Kein Training in History → Start mit '${nextRoutineName}'`);
+    } else if (uniqueWorkouts.length === 1) {
+      // Nur 1 Workout → nächstes im Zyklus
+      const lastIndex = routines.findIndex(r => r.name === uniqueWorkouts[0]);
       if (lastIndex >= 0 && lastIndex < routines.length - 1) {
         nextRoutineName = routines[lastIndex + 1].name;
-      } else if (lastIndex === routines.length - 1) {
-        nextRoutineName = routines[0].name; // Loop zurück zum Start
+      } else {
+        nextRoutineName = routines[0].name; // Wrap around
       }
-      // Falls Name nicht gefunden (z.B. Umbenennung), bleiben wir beim Default
+      console.log(`🔄 Nur 1 Typ in History → Nächstes: '${nextRoutineName}'`);
+    } else {
+      // 2+ verschiedene Workouts → finde den fehlenden dritten
+      const routineNames = routines.map(r => r.name);
+      const missing = routineNames.find(name => !uniqueWorkouts.includes(name));
+      nextRoutineName = missing || routines[0].name; // Fallback falls alle vorhanden
+      console.log(`🎯 Letzte 2 waren ${uniqueWorkouts.join(', ')} → Empfehlung: '${nextRoutineName}'`);
+    }
+
+    if (!nextRoutineName) {
+      // Final Fallback (sollte nie passieren)
+      nextRoutineName = routines[0].name;
+
     }
 
     console.log(`🧠 Smart Engine: Plan '${nextRoutineName}' wird generiert.`);
