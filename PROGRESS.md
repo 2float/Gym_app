@@ -23,8 +23,8 @@ Wir befinden uns hier. Das Ziel ist eine robuste, fehlerfreie App vor neuen Feat
 - [x] **Daten-Qualität:** "Übung hinzufügen" muss ein Dropdown aus dem Katalog sein (keine Freitext-Fehler).
 
 #### Prio 2: Workflow & Usability ⚡
-- [ ] **Routine-Wahl:** Im Dashboard nicht nur das empfohlene Training, sondern Auswahl aller Templates ermöglichen.
-- [ ] **UI Focus:** Übersichtliche Liste der Übungen, Details erst beim Draufklicken (Accordion/Focus Mode).
+- [x] **Routine-Wahl:** Im Dashboard nicht nur das empfohlene Training, sondern Auswahl aller Templates ermöglichen.
+- [x] **UI Focus:** Übersichtliche Liste der Übungen, Details erst beim Draufklicken (Accordion/Focus Mode).
 
 #### Prio 3: Nice to Have 🎨
 - [ ] Erweiterte History-Details während des Trainings

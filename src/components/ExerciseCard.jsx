@@ -1,6 +1,6 @@
 import React from 'react';
 
-const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
+const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand }) => {
   
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
@@ -44,16 +44,57 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
     onUpdate({ ...exercise, [field]: value });
   };
 
+  // Berechne Fortschritt
+  const completedSets = exercise.sets.filter(s => s.completed).length;
+  const totalSets = exercise.sets.length;
+  const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-      {/* HEADER */}
-      <div className="bg-gray-50 p-4 border-b border-gray-100">
+      {/* HEADER - Always visible, clickable to expand/collapse */}
+      <div 
+        className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
+          isExpanded ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
+        }`}
+        onClick={onToggleExpand}
+      >
         <div className="flex justify-between items-start">
-          <div>
-            <h3 className="font-bold text-lg text-gray-800">{exercise.name}</h3>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-lg text-gray-800">{exercise.name}</h3>
+              {!isExpanded && (
+                <span className="text-xs font-semibold text-gray-400">
+                  {completedSets}/{totalSets}
+                </span>
+              )}
+              {/* Expand/Collapse Icon */}
+              <svg 
+                className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             
-            {/* SMART HINT & EQUIPMENT INFO */}
-            {exercise.targetDetails && (
+            {/* Progress Bar (only when collapsed) */}
+            {!isExpanded && (
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all ${
+                      progress === 100 ? 'bg-green-500' : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                {progress === 100 && <span className="text-green-500">✓</span>}
+              </div>
+            )}
+            
+            {/* SMART HINT & EQUIPMENT INFO (only when expanded) */}
+            {isExpanded && exercise.targetDetails && (
               <div className="mt-1 flex flex-wrap gap-2">
                  {/* Progressions-Hinweis */}
                 {exercise.targetDetails.hint && (
@@ -75,17 +116,23 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
               </div>
             )}
              
-             {/* Letzte Werte */}
-             {exercise.targetDetails?.lastWeight && exercise.targetDetails.lastWeight !== "-" && (
+             {/* Letzte Werte (only when expanded) */}
+             {isExpanded && exercise.targetDetails?.lastWeight && exercise.targetDetails.lastWeight !== "-" && (
                  <div className="text-xs text-gray-400 mt-1">
                     Last: {exercise.targetDetails.lastWeight}kg x {exercise.targetDetails.lastReps}
                  </div>
              )}
           </div>
           
-          {/* Löschen Button (optional) */}
-          {onDelete && (
-            <button onClick={onDelete} className="text-gray-300 hover:text-red-500">
+          {/* Löschen Button (only when expanded) */}
+          {isExpanded && onDelete && (
+            <button 
+              onClick={(e) => {
+                e.stopPropagation(); // Verhindert Toggle beim Löschen
+                onDelete();
+              }} 
+              className="text-gray-300 hover:text-red-500"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
@@ -94,7 +141,8 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
         </div>
       </div>
 
-      {/* SETS TABLE */}
+      {/* SETS TABLE - Only visible when expanded */}
+      {isExpanded && (
       <div className="p-4 space-y-3">
         {/* Labels */}
         <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 uppercase font-semibold text-center mb-1">
@@ -195,6 +243,7 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete }) => {
         </div>
 
       </div>
+      )}
     </div>
   );
 };

@@ -3,6 +3,32 @@ import { calculateTarget } from '../utils/progressionEngine';
 import { db } from '../db';
 
 /**
+ * Holt alle verfügbaren Routinen aus der Datenbank
+ */
+export const getAvailableRoutines = async () => {
+  try {
+    // Versuche zuerst aus Dexie (offline-fähig)
+    let routines = await db.ref_routines.orderBy('sort_order').toArray();
+    
+    // Falls lokal leer, hole von Supabase
+    if (routines.length === 0) {
+      const { data, error } = await supabase
+        .from('ref_routines')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      
+      if (error) throw error;
+      routines = data || [];
+    }
+    
+    return routines;
+  } catch (error) {
+    console.error("❌ Fehler beim Laden der Routinen:", error);
+    throw error;
+  }
+};
+
+/**
  * Holt das nächste "Smart Workout" basierend auf der Historie.
  * Strategie: "Local First" Read
  * 1. Prüfe lokale DB (Dexie) auf letztes Training (das ist immer aktuell, auch offline).
@@ -13,7 +39,7 @@ export const generateNextWorkout = async () => {
     let lastRoutineName = null;
 
     // A. LOKALER CHECK (Priorität 1)
-    // Wir holen den aktuellsten Log aus Dexie
+    // Wir holen den aktuellsten Log aus Dexie (sortiert nach vollständigem Timestamp)
     const lastLocalLog = await db.workout_logs.orderBy('date').reverse().first();
     
     if (lastLocalLog) {
@@ -24,8 +50,8 @@ export const generateNextWorkout = async () => {
       // B. CLOUD FALLBACK (Priorität 2 - nur wenn lokal leer)
       const { data: remoteLogs } = await supabase
         .from('workout_logs')
-        .select('workout_name, date') // Hier heißt es 'workout_name'
-        .order('date', { ascending: false })
+        .select('workout_name, created_at')
+        .order('created_at', { ascending: false })
         .limit(1);
 
       if (remoteLogs && remoteLogs.length > 0) {

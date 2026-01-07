@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
+import { useApp } from '../contexts/AppContext';
 import ExerciseCard from './ExerciseCard';
 import ExerciseSelector from './ExerciseSelector';
 import ErrorBoundary from './ErrorBoundary';
@@ -16,8 +17,10 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
   // UI State
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [expandedExerciseIndex, setExpandedExerciseIndex] = useState(0); // Erste Übung ist standardmäßig offen
   
   const isOnline = useOnlineStatus();
+  const { refreshHistory } = useApp();
 
   // Scroll to top
   useEffect(() => {
@@ -119,7 +122,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
     // Basis-Objekt für Dexie (verwendet camelCase wie im Frontend gewohnt)
     const logEntryLocal = {
-      date: endTime.toISOString().split('T')[0],
+      date: endTime.toISOString(), // Vollständiger Timestamp statt nur Datum
       workoutName, 
       duration_ms: durationMs,
       exercises: validExercises.map(ex => ({
@@ -142,10 +145,11 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       if (isOnline) {
         // MAPPING FÜR SUPABASE: camelCase -> snake_case
         const supabasePayload = {
-            date: logEntryLocal.date,
-            workout_name: logEntryLocal.workoutName, // HIER WAR DER FEHLER
+            date: endTime.toISOString().split('T')[0], // Nur Datum für DATE-Spalte (z.B. "2026-01-07")
+            workout_name: logEntryLocal.workoutName,
             duration_ms: logEntryLocal.duration_ms,
             exercises: logEntryLocal.exercises
+            // created_at wird automatisch von PostgreSQL mit vollem Timestamp gesetzt
             // KEIN 'synced' Feld an Supabase senden
             // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
         };
@@ -165,9 +169,19 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       alert("Fehler beim Speichern! Bitte Screenshot machen.");
     }
 
+    // Refresh history in context so dashboard shows new workout
+    await refreshHistory();
+
     setTimeout(() => {
       onFinish();
     }, 1000);
+  };
+
+  // Workout abbrechen
+  const handleCancel = () => {
+    if (confirm('⚠️ Training wirklich abbrechen? Alle Daten gehen verloren!')) {
+      onFinish();
+    }
   };
 
   // --- RENDER ---
@@ -185,7 +199,16 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     <div className="space-y-6 pb-24">
       {/* HEADER */}
       <div className="flex justify-between items-end border-b pb-4 bg-white/50 sticky top-0 backdrop-blur-md z-10 p-2 -mx-2">
-        <div>
+        <button 
+          onClick={handleCancel}
+          className="text-gray-400 hover:text-gray-600 transition-colors"
+          title="Zurück zum Hauptmenü"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="flex-1 mx-4">
           <h2 className="text-2xl font-bold text-blue-900">{workoutName}</h2>
           <p className="text-gray-500 text-xs uppercase tracking-wide">
              {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' })}
@@ -204,6 +227,8 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
               exercise={exercise}
               onUpdate={(updatedEx) => handleExerciseUpdate(index, updatedEx)}
               onDelete={() => handleDeleteExercise(index)}
+              isExpanded={expandedExerciseIndex === index}
+              onToggleExpand={() => setExpandedExerciseIndex(expandedExerciseIndex === index ? null : index)}
           />
         </ErrorBoundary>
       ))}
