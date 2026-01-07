@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ActiveWorkout from './components/ActiveWorkout';
 import RoutineSelector from './components/RoutineSelector';
 import { generateNextWorkout, generateSpecificWorkout } from './services/smartWorkoutService';
@@ -13,6 +13,13 @@ function App() {
   const [isLoadingPlan, setIsLoadingPlan] = useState(false); // Lade-Spinner
   const [errorMsg, setErrorMsg] = useState("");
   const [showRoutineSelector, setShowRoutineSelector] = useState(false); // Routine-Auswahl Modal
+
+  // Request Notification Permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Handler: Workout-Start-Button (mit Sync)
   const handleStartWorkout = async () => {

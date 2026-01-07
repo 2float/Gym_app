@@ -1,7 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand }) => {
   
+  // Timer State
+  const [restTimer, setRestTimer] = useState(null); // Sekunden verbleibend (null = kein Timer)
+  const [restDuration, setRestDuration] = useState(120); // Default 120s
+  const [showTimerConfig, setShowTimerConfig] = useState(false);
+
+  // Timer Countdown
+  useEffect(() => {
+    if (restTimer === null) return;
+
+    const interval = setInterval(() => {
+      setRestTimer(prev => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [restTimer]);
+
+  // Vibration & Notification bei Timer-Ende
+  useEffect(() => {
+    if (restTimer === 0) {
+      // Vibration (3x kurz: 200ms on, 100ms off, 200ms on, 100ms off, 200ms on)
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+      
+      // Optional: Browser Notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Pause vorbei! 💪', {
+          body: `Nächster Satz: ${exercise.name}`,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png'
+        });
+      }
+    }
+  }, [restTimer, exercise.name]);
+
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
     // 1. Tiefe Kopie der Sätze erstellen (WICHTIG für den Bugfix!)
@@ -19,6 +54,15 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
       i === setIndex ? { ...s, completed: !s.completed } : s
     );
     onUpdate({ ...exercise, sets: updatedSets });
+
+    // Timer starten wenn Set completed UND noch offene Sets vorhanden
+    const newCompletedStatus = !exercise.sets[setIndex].completed;
+    if (newCompletedStatus) {
+      const hasOpenSets = updatedSets.some(s => !s.completed);
+      if (hasOpenSets) {
+        setRestTimer(restDuration); // Timer starten
+      }
+    }
   };
 
   // Hilfsfunktion: Neuen Satz hinzufügen
@@ -144,6 +188,76 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
       {/* SETS TABLE - Only visible when expanded */}
       {isExpanded && (
       <div className="p-4 space-y-3">
+        
+        {/* TIMER - Prominent Display */}
+        {restTimer !== null && (
+          <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 text-center">
+                <div className="text-xs text-gray-500 font-semibold mb-1">Pausenzeit</div>
+                <div 
+                  className={`text-4xl font-bold tabular-nums transition-colors ${
+                    restTimer > 0 ? 'text-blue-600' : 'text-red-600'
+                  }`}
+                  onClick={() => setShowTimerConfig(!showTimerConfig)}
+                >
+                  {restTimer > 0 
+                    ? `${Math.floor(restTimer / 60)}:${String(restTimer % 60).padStart(2, '0')}`
+                    : `-${Math.floor(Math.abs(restTimer) / 60)}:${String(Math.abs(restTimer) % 60).padStart(2, '0')}`
+                  }
+                </div>
+                {restTimer <= 0 && (
+                  <div className="text-xs text-red-600 font-semibold mt-1 animate-pulse">
+                    Zeit abgelaufen!
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => setRestTimer(null)}
+                  className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs font-semibold"
+                  title="Timer stoppen"
+                >
+                  Stop
+                </button>
+                <button
+                  onClick={() => setRestTimer(restDuration)}
+                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold"
+                  title="Timer neu starten"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+            
+            {/* Timer Konfiguration */}
+            {showTimerConfig && (
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <div className="text-xs text-gray-600 mb-2 font-semibold">Pausendauer anpassen:</div>
+                <div className="flex gap-2">
+                  {[60, 90, 120, 150, 180].map(seconds => (
+                    <button
+                      key={seconds}
+                      onClick={() => {
+                        setRestDuration(seconds);
+                        setRestTimer(seconds);
+                        setShowTimerConfig(false);
+                      }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        restDuration === seconds
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {seconds}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Labels */}
         <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 uppercase font-semibold text-center mb-1">
           <div className="col-span-1">#</div>
