@@ -227,16 +227,33 @@ function App() {
                 </div>
               ) : (
                 history.slice(0, 5).map(log => {
-                  // Berechne Gesamt-Volumen (kg * reps)
-                  const totalVolume = log.exercises?.reduce((sum, ex) => {
+                  // Durchschnitts-RPE berechnen
+                  const rpeValues = log.exercises
+                    ?.map(ex => parseFloat(ex.rpe))
+                    .filter(rpe => !isNaN(rpe) && rpe > 0) || [];
+                  const avgRpe = rpeValues.length > 0 
+                    ? (rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length).toFixed(1)
+                    : null;
+
+                  // Top Lift finden (höchstes Gewicht)
+                  let topLift = null;
+                  let maxWeight = 0;
+                  log.exercises?.forEach(ex => {
                     const weights = ex.weight?.split(';').map(Number).filter(n => !isNaN(n)) || [];
-                    const reps = ex.reps?.split(';').map(Number).filter(n => !isNaN(n)) || [];
-                    const exVolume = weights.reduce((s, w, i) => s + (w * (reps[i] || 0)), 0);
-                    return sum + exVolume;
-                  }, 0) || 0;
+                    const heaviest = Math.max(...weights);
+                    if (heaviest > maxWeight) {
+                      maxWeight = heaviest;
+                      topLift = { name: ex.name, weight: heaviest };
+                    }
+                  });
 
                   // Formatiere Dauer
                   const durationMin = log.duration_ms ? Math.round(log.duration_ms / 60000) : null;
+                  
+                  // Formatiere Datum + Uhrzeit
+                  const workoutDate = new Date(log.date);
+                  const dateStr = workoutDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' });
+                  const timeStr = workoutDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
                   return (
                     <div key={log.id || log.date} className="bg-white p-5 rounded-xl shadow-md hover:shadow-lg transition-all border border-gray-100 hover:border-blue-200 group">
@@ -245,12 +262,12 @@ function App() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-bold text-lg text-gray-900">{log.workoutName || log.workout_name || "Training"}</span>
                             <span className="text-xs text-gray-400">
-                              {new Date(log.date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' })}
+                              {dateStr} • {timeStr}
                             </span>
                           </div>
                           
                           {/* Statistiken */}
-                          <div className="flex gap-4 mt-2">
+                          <div className="flex gap-3 mt-2 flex-wrap">
                             <div className="flex items-center gap-1 text-xs text-gray-600">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -265,40 +282,38 @@ function App() {
                                 <span className="font-semibold">{durationMin}</span> min
                               </div>
                             )}
-                            {totalVolume > 0 && (
+                            {topLift && (
                               <div className="flex items-center gap-1 text-xs text-gray-600">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                                 </svg>
-                                <span className="font-semibold">{totalVolume.toLocaleString()}</span> kg
+                                <span className="font-semibold">{topLift.weight}kg</span> {topLift.name}
                               </div>
                             )}
                           </div>
                         </div>
                         
-                        {/* Status Badge */}
-                        <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                          Erledigt
-                        </div>
+                        {/* RPE Badge */}
+                        {avgRpe && (
+                          <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            avgRpe >= 9 ? 'bg-red-100 text-red-700' :
+                            avgRpe >= 7 ? 'bg-orange-100 text-orange-700' :
+                            'bg-green-100 text-green-700'
+                          }`}>
+                            RPE {avgRpe}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Übungsliste */}
+                      {/* Übungsliste mit Sets */}
                       {log.exercises && log.exercises.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-gray-100">
                           <div className="flex flex-wrap gap-2">
-                            {log.exercises.slice(0, 3).map((ex, i) => (
+                            {log.exercises.map((ex, i) => (
                               <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-medium">
-                                {ex.name}
+                                {ex.name} ({ex.sets}×)
                               </span>
                             ))}
-                            {log.exercises.length > 3 && (
-                              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-md font-medium">
-                                +{log.exercises.length - 3} mehr
-                              </span>
-                            )}
                           </div>
                         </div>
                       )}
