@@ -45,6 +45,32 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
   const totalSets = exercise.sets.length;
   const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
 
+  // Berechne Set-Info für collapsed view
+  const getSetSummary = () => {
+    const completed = exercise.sets.filter(s => s.completed);
+    if (completed.length === 0) return null;
+
+    // Prüfe ob alle Sätze identisch sind
+    const first = completed[0];
+    const allSame = completed.every(s => s.weight === first.weight && s.reps === first.reps);
+
+    if (allSame) {
+      return `all: ${first.weight}kg x ${first.reps}`;
+    } else {
+      // Finde schwersten Satz, bei Gleichstand den mit wenigsten Reps
+      const heaviest = completed.reduce((max, set) => {
+        const maxWeight = parseFloat(max.weight) || 0;
+        const setWeight = parseFloat(set.weight) || 0;
+        if (setWeight > maxWeight) return set;
+        if (setWeight === maxWeight && (parseInt(set.reps) || 0) < (parseInt(max.reps) || 0)) return set;
+        return max;
+      });
+      return `top: ${heaviest.weight}kg x ${heaviest.reps}`;
+    }
+  };
+
+  const setSummary = getSetSummary();
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
       <div 
@@ -58,9 +84,27 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-lg text-gray-800">{exercise.name}</h3>
               {!isExpanded && (
-                <span className="text-xs font-semibold text-gray-400">
-                  {completedSets}/{totalSets}
-                </span>
+                <>
+                  <span className="text-xs font-semibold text-gray-400">
+                    {completedSets}/{totalSets}
+                  </span>
+                  {/* Set Summary */}
+                  {setSummary && (
+                    <span className="text-xs text-gray-600 font-medium">
+                      {setSummary}
+                    </span>
+                  )}
+                  {/* RPE Badge im zusammengeklappten Zustand */}
+                  {exercise.rpe && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      parseInt(exercise.rpe) >= 9 ? 'bg-red-100 text-red-700' :
+                      parseInt(exercise.rpe) >= 7 ? 'bg-orange-100 text-orange-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      RPE {exercise.rpe}
+                    </span>
+                  )}
+                </>
               )}
               <svg 
                 className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}

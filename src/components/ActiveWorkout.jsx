@@ -29,36 +29,28 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Auto-Collapse: Wenn eine Übung fertig ist (alle Sets + RPE), klappt sie zu und nächste öffnet sich
-  useEffect(() => {
-    if (expandedExerciseIndex === null || exercises.length === 0) return;
-
-    const currentExercise = exercises[expandedExerciseIndex];
-    if (!currentExercise) return;
-
-    // Prüfe ob Übung "fertig" ist
-    const allSetsCompleted = currentExercise.sets.every(set => set.completed);
-    const hasRPE = currentExercise.rpe && currentExercise.rpe.trim() !== '';
-    
-    if (allSetsCompleted && hasRPE) {
-      // Übung ist fertig → öffne nächste
-      const nextIndex = expandedExerciseIndex + 1;
-      if (nextIndex < exercises.length) {
-        setTimeout(() => setExpandedExerciseIndex(nextIndex), 300); // Kurze Verzögerung für UX
-      } else {
-        // Alle Übungen fertig → schließe alles
-        setTimeout(() => setExpandedExerciseIndex(null), 300);
-      }
-    }
-  }, [exercises, expandedExerciseIndex]);
-
   // --- ACTIONS ---
 
   // Update einer einzelnen Übung in der Liste (wird von ExerciseCard aufgerufen)
   const handleExerciseUpdate = (index, updatedExercise) => {
+    const oldExercise = exercises[index];
     const newExercises = [...exercises];
     newExercises[index] = updatedExercise;
     setExercises(newExercises);
+
+    // Auto-Collapse nur wenn Übung GERADE JETZT fertig wurde
+    const wasComplete = oldExercise.sets.every(s => s.completed) && oldExercise.rpe;
+    const isNowComplete = updatedExercise.sets.every(s => s.completed) && updatedExercise.rpe;
+    
+    if (!wasComplete && isNowComplete && expandedExerciseIndex === index) {
+      // Übung wurde gerade fertiggestellt → Auto-Collapse
+      const nextIndex = index + 1;
+      if (nextIndex < exercises.length) {
+        setTimeout(() => setExpandedExerciseIndex(nextIndex), 300);
+      } else {
+        setTimeout(() => setExpandedExerciseIndex(null), 300);
+      }
+    }
   };
 
   // Übung löschen
