@@ -3,6 +3,7 @@ import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import { getAvailableRoutines } from '../services/smartWorkoutService';
 import { useApp } from '../contexts/AppContext';
+import TemplateEditor from '../components/TemplateEditor';
 
 export default function Templates() {
   const { isOnline, history } = useApp();
@@ -11,6 +12,8 @@ export default function Templates() {
   const [selectedRoutine, setSelectedRoutine] = useState(null);
   const [routineDetails, setRoutineDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
 
   // Routines laden
   useEffect(() => {
@@ -95,6 +98,18 @@ export default function Templates() {
             <p className="text-sm text-gray-600 dark:text-gray-400">{routines.length} Workout-Vorlagen</p>
           </div>
         </div>
+        <button
+          onClick={() => {
+            setEditingTemplate(null);
+            setShowTemplateEditor(true);
+          }}
+          className="mt-4 w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Neues Template erstellen
+        </button>
       </div>
 
       {/* Routines List */}
@@ -295,6 +310,10 @@ export default function Templates() {
                   Schließen
                 </button>
                 <button
+                  onClick={() => {
+                    setEditingTemplate(selectedRoutine);
+                    setShowTemplateEditor(true);
+                  }}
                   disabled={!isOnline}
                   className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
                     isOnline
@@ -308,6 +327,27 @@ export default function Templates() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Template Editor Modal */}
+      {showTemplateEditor && (
+        <TemplateEditor
+          template={editingTemplate}
+          onSave={async () => {
+            setShowTemplateEditor(false);
+            setEditingTemplate(null);
+            setSelectedRoutine(null);
+            // Routines neu laden
+            setLoading(true);
+            const data = await getAvailableRoutines();
+            setRoutines(data);
+            setLoading(false);
+          }}
+          onCancel={() => {
+            setShowTemplateEditor(false);
+            setEditingTemplate(null);
+          }}
+        />
       )}
     </div>
   );

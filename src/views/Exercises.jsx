@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import { useApp } from '../contexts/AppContext';
+import ExerciseEditor from '../components/ExerciseEditor';
 
 export default function Exercises() {
   const { isOnline } = useApp();
@@ -10,6 +11,8 @@ export default function Exercises() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedExercise, setSelectedExercise] = useState(null); // Für Details-Modal
+  const [editingExercise, setEditingExercise] = useState(null);
+  const [showExerciseEditor, setShowExerciseEditor] = useState(false);
 
   // Übungen laden (Local First)
   useEffect(() => {
@@ -115,6 +118,25 @@ export default function Exercises() {
             </button>
           ))}
         </div>
+
+        {/* Create Button */}
+        <button
+          onClick={() => {
+            setEditingExercise(null);
+            setShowExerciseEditor(true);
+          }}
+          disabled={!isOnline}
+          className={`mt-4 w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+            isOnline
+              ? 'bg-green-600 hover:bg-green-700 text-white'
+              : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Neue Übung erstellen {!isOnline && '(Offline)'}
+        </button>
       </div>
 
       {/* Exercise List */}
@@ -248,16 +270,59 @@ export default function Exercises() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex gap-3">
               <button
                 onClick={() => setSelectedExercise(null)}
-                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors"
+                className="flex-1 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg font-semibold transition-colors"
               >
                 Schließen
+              </button>
+              <button
+                onClick={() => {
+                  setEditingExercise(selectedExercise);
+                  setShowExerciseEditor(true);
+                }}
+                disabled={!isOnline}
+                className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
+                  isOnline
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                }`}
+              >
+                Bearbeiten {!isOnline && '(Offline)'}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Exercise Editor Modal */}
+      {showExerciseEditor && (
+        <ExerciseEditor
+          exercise={editingExercise}
+          onSave={async () => {
+            setShowExerciseEditor(false);
+            setEditingExercise(null);
+            setSelectedExercise(null);
+            // Übungen neu laden
+            setLoading(true);
+            let data = await db.ref_exercises.toArray();
+            if (isOnline) {
+              const { data: supabaseData } = await supabase.from('ref_exercises').select('*');
+              if (supabaseData) {
+                await db.ref_exercises.clear();
+                await db.ref_exercises.bulkAdd(supabaseData);
+                data = supabaseData;
+              }
+            }
+            setExercises(data);
+            setLoading(false);
+          }}
+          onCancel={() => {
+            setShowExerciseEditor(false);
+            setEditingExercise(null);
+          }}
+        />
       )}
     </div>
   );
