@@ -218,7 +218,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <h2 className="text-xl font-bold text-gray-700">Speichere Gains...</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Speichere Gains...</h2>
       </div>
     );
   }
@@ -226,10 +226,10 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
   return (
     <div className="space-y-6 pb-24">
       {/* HEADER */}
-      <div className="flex justify-between items-end border-b pb-4 bg-white/50 sticky top-0 backdrop-blur-md z-10 p-2 -mx-2">
+      <div className="flex justify-between items-end border-b border-gray-200 dark:border-gray-700 pb-4 bg-white/90 dark:bg-gray-900/90 sticky top-0 backdrop-blur-md z-10 p-2 -mx-2">
         <button 
           onClick={handleCancel}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-600 transition-colors"
           title="Zurück zum Hauptmenü"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -237,8 +237,8 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
           </svg>
         </button>
         <div className="flex-1 mx-4">
-          <h2 className="text-2xl font-bold text-blue-900">{workoutName}</h2>
-          <p className="text-gray-500 text-xs uppercase tracking-wide">
+          <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-300">{workoutName}</h2>
+          <p className="text-gray-600 dark:text-gray-500 text-xs uppercase tracking-wide">
              {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
         </div>
@@ -260,7 +260,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       {/* ADD EXERCISE BUTTON */}
       <button 
         onClick={() => setShowExerciseSelector(true)}
-        className="w-full bg-white p-4 rounded-xl shadow-sm text-gray-600 font-semibold hover:bg-gray-50 border-2 border-dashed border-gray-300 hover:border-blue-400 transition-all"
+        className="w-full bg-gray-100 dark:bg-gray-800 p-4 rounded-xl shadow-sm text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-400 transition-all"
       >
         + Übung hinzufügen
       </button>

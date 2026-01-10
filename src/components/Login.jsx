@@ -33,10 +33,10 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-bold text-white">
+          <h2 className="mt-6 text-center text-3xl font-bold text-gray-900 dark:text-white">
             {isSignUp ? 'Account erstellen' : 'Anmelden'}
           </h2>
         </div>
@@ -55,7 +55,7 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-gray-700 bg-gray-800 text-white placeholder-gray-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="E-Mail-Adresse"
               />
             </div>
@@ -72,21 +72,21 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none relative block w-full px-3 py-2 border border-gray-700 bg-gray-800 text-white placeholder-gray-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Passwort"
               />
             </div>
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-900/50 border border-red-700 p-4">
-              <p className="text-sm text-red-200">{error}</p>
+            <div className="rounded-md bg-red-50 dark:bg-red-900/50 border border-red-200 dark:border-red-700 p-4">
+              <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
             </div>
           )}
 
           {message && (
-            <div className="rounded-md bg-green-900/50 border border-green-700 p-4">
-              <p className="text-sm text-green-200">{message}</p>
+            <div className="rounded-md bg-green-50 dark:bg-green-900/50 border border-green-200 dark:border-green-700 p-4">
+              <p className="text-sm text-green-800 dark:text-green-200">{message}</p>
             </div>
           )}
 
@@ -108,7 +108,7 @@ export default function Login() {
                 setError(null);
                 setMessage(null);
               }}
-              className="text-sm text-blue-400 hover:text-blue-300"
+              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
             >
               {isSignUp
                 ? 'Bereits einen Account? Anmelden'
