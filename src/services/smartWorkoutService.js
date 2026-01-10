@@ -29,6 +29,57 @@ export const getAvailableRoutines = async () => {
 };
 
 /**
+ * Berechnet nur die Empfehlung (ohne kompletten Plan zu generieren)
+ * Gibt den Namen der empfohlenen Routine zurück
+ */
+export const getRecommendedRoutine = async () => {
+  try {
+    // A. LOKALER CHECK - Hole die letzten Workouts
+    const recentLogs = await db.workout_logs.orderBy('date').reverse().limit(10).toArray();
+    
+    const uniqueWorkouts = [];
+    for (const log of recentLogs) {
+      const workoutName = log.workoutName || log.workout_name;
+      if (workoutName && !uniqueWorkouts.includes(workoutName)) {
+        uniqueWorkouts.push(workoutName);
+      }
+      if (uniqueWorkouts.length === 2) break;
+    }
+
+    // B. Alle Routinen holen
+    const routines = await getAvailableRoutines();
+    if (!routines || routines.length === 0) {
+      return null;
+    }
+
+    let nextRoutineName;
+
+    if (uniqueWorkouts.length === 0) {
+      // Keine History → erste Routine
+      nextRoutineName = routines[0].name;
+    } else if (uniqueWorkouts.length === 1) {
+      // Nur 1 Workout → nächstes im Zyklus
+      const lastIndex = routines.findIndex(r => r.name === uniqueWorkouts[0]);
+      if (lastIndex >= 0 && lastIndex < routines.length - 1) {
+        nextRoutineName = routines[lastIndex + 1].name;
+      } else {
+        nextRoutineName = routines[0].name; // Wrap around
+      }
+    } else {
+      // 2+ verschiedene Workouts → finde den fehlenden dritten
+      const routineNames = routines.map(r => r.name);
+      const missing = routineNames.find(name => !uniqueWorkouts.includes(name));
+      nextRoutineName = missing || routines[0].name;
+    }
+
+    return nextRoutineName;
+  } catch (error) {
+    console.error("❌ Fehler bei Empfehlungsberechnung:", error);
+    return null;
+  }
+};
+
+/**
  * Holt das nächste "Smart Workout" basierend auf der Historie.
  * Strategie: "Local First" Read
  * 1. Prüfe lokale DB (Dexie) auf letztes Training (das ist immer aktuell, auch offline).
