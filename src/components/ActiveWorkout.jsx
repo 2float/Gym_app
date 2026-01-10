@@ -3,11 +3,13 @@ import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import ExerciseCard from './ExerciseCard';
 import ExerciseSelector from './ExerciseSelector';
 import ErrorBoundary from './ErrorBoundary';
 
 const ActiveWorkout = ({ onFinish, initialData }) => {
+  const { user } = useAuth();
   const [workoutName, setWorkoutName] = useState(initialData?.routineName || "Freies Training");
   const [startTime] = useState(new Date());
   
@@ -181,7 +183,8 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
             date: naiveTimestamp, // Lokale Zeit als UTC (naive timestamp)
             workout_name: logEntryLocal.workoutName,
             duration_ms: logEntryLocal.duration_ms,
-            exercises: logEntryLocal.exercises
+            exercises: logEntryLocal.exercises,
+            user_id: user.id // Wichtig: User ID für RLS
             // created_at wird weiterhin automatisch gesetzt
             // KEIN 'synced' Feld an Supabase senden
             // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
@@ -246,10 +249,6 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
           <p className="text-gray-500 text-xs uppercase tracking-wide">
              {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' })}
           </p>
-        </div>
-        {/* Platzhalter für Timer später */}
-        <div className="text-right text-gray-400 font-mono text-sm">
-           ⏱️ --:--
         </div>
       </div>
 

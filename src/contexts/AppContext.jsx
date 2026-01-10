@@ -2,10 +2,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
+import { useAuth } from './AuthContext';
 
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
+  const { user } = useAuth(); // Get current user
   const [history, setHistory] = useState([]);
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
@@ -27,8 +29,8 @@ export function AppProvider({ children }) {
     const initData = async () => {
       let localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
       
-      // Versuche immer zu syncen wenn online
-      if (isOnline && !isCancelled) {
+      // Nur syncen wenn online UND authenticated
+      if (isOnline && user && !isCancelled) {
         console.log("🔄 Lade aktuelle Daten aus der Cloud...");
         const { data: cloudLogs, error } = await supabase
           .from('workout_logs')
@@ -82,6 +84,8 @@ export function AppProvider({ children }) {
         }
       } else if (!isOnline) {
         console.log(`📴 Offline - ${localLogs.length} Workout Logs aus lokalem Cache geladen`);
+      } else if (!user) {
+        console.log(`🔒 Nicht eingeloggt - Sync übersprungen`);
       }
 
       if (!isCancelled) {
@@ -94,7 +98,7 @@ export function AppProvider({ children }) {
     return () => {
       isCancelled = true; // Cleanup: Verhindere State-Updates nach Unmount
     };
-  }, [isWorkoutActive, isOnline]);
+  }, [isWorkoutActive, isOnline, user]); // user hinzugefügt als dependency
 
   // Reload history after workout
   const refreshHistory = async () => {

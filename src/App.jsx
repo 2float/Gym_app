@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import ActiveWorkout from './components/ActiveWorkout';
 import RoutineSelector from './components/RoutineSelector';
+import Login from './components/Login';
 import { generateNextWorkout, generateSpecificWorkout } from './services/smartWorkoutService';
 import { useApp } from './contexts/AppContext';
+import { useAuth } from './contexts/AuthContext';
 
 
 function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const { history, isOnline, isWorkoutActive, setIsWorkoutActive, lastSyncTime, isSyncingManually, triggerManualSync } = useApp();
   
   // NEU: Smart Features State
@@ -13,13 +16,6 @@ function App() {
   const [isLoadingPlan, setIsLoadingPlan] = useState(false); // Lade-Spinner
   const [errorMsg, setErrorMsg] = useState("");
   const [showRoutineSelector, setShowRoutineSelector] = useState(false); // Routine-Auswahl Modal
-
-  // Request Notification Permission on mount
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
 
   // Handler: Workout-Start-Button (mit Sync)
   const handleStartWorkout = async () => {
@@ -98,6 +94,19 @@ function App() {
     setSmartPlan(null); // Reset Plan
   };
 
+  // Show login screen if not authenticated
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-xl">Lädt...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 font-sans text-gray-900">
       {/* HEADER */}
@@ -106,9 +115,23 @@ function App() {
           <span className="text-2xl">💪</span>
           <h1 className="text-xl font-bold tracking-tight">Gym App</h1>
         </div>
-        {/* Sync Info & Button */}
+        {/* User Info & Sync */}
         <div className="flex items-center gap-3">
+          {/* User Email */}
           <div className="text-right">
+            <div className="text-xs opacity-75">Eingeloggt als</div>
+            <div className="text-xs font-medium">{user.email}</div>
+          </div>
+          {/* Logout Button */}
+          <button
+            onClick={signOut}
+            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-all active:scale-95"
+            title="Abmelden"
+          >
+            Logout
+          </button>
+          {/* Sync Info */}
+          <div className="text-right border-l border-white/20 pl-3">
             <div className="text-xs opacity-75">Last Sync</div>
             <div className="text-xs font-medium">
               {lastSyncTime 

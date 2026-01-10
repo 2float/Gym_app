@@ -1,50 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand }) => {
-  
-  // Timer State
-  const [restTimer, setRestTimer] = useState(null); // Sekunden verbleibend (null = kein Timer)
-  const [restDuration, setRestDuration] = useState(120); // Default 120s
-  const [showTimerConfig, setShowTimerConfig] = useState(false);
-
-  // Timer Countdown
-  useEffect(() => {
-    if (restTimer === null) return;
-
-    const interval = setInterval(() => {
-      setRestTimer(prev => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [restTimer]);
-
-  // Vibration & Notification bei Timer-Ende
-  useEffect(() => {
-    if (restTimer === 0) {
-      // Vibration (3x kurz: 200ms on, 100ms off, 200ms on, 100ms off, 200ms on)
-      if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
-      }
-      
-      // Optional: Browser Notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Pause vorbei! 💪', {
-          body: `Nächster Satz: ${exercise.name}`,
-          icon: '/icon-192.png',
-          badge: '/icon-192.png'
-        });
-      }
-    }
-  }, [restTimer, exercise.name]);
 
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
-    // 1. Tiefe Kopie der Sätze erstellen (WICHTIG für den Bugfix!)
     const updatedSets = exercise.sets.map((s, i) => 
       i === setIndex ? { ...s, [field]: value } : s
     );
-    
-    // 2. Das gesamte Übungsobjekt aktualisieren und nach oben melden
     onUpdate({ ...exercise, sets: updatedSets });
   };
 
@@ -54,21 +16,11 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
       i === setIndex ? { ...s, completed: !s.completed } : s
     );
     onUpdate({ ...exercise, sets: updatedSets });
-
-    // Timer starten wenn Set completed UND noch offene Sets vorhanden
-    const newCompletedStatus = !exercise.sets[setIndex].completed;
-    if (newCompletedStatus) {
-      const hasOpenSets = updatedSets.some(s => !s.completed);
-      if (hasOpenSets) {
-        setRestTimer(restDuration); // Timer starten
-      }
-    }
   };
 
   // Hilfsfunktion: Neuen Satz hinzufügen
   const addSet = () => {
     const lastSet = exercise.sets[exercise.sets.length - 1];
-    // Kopiere Werte vom letzten Satz als Vorschlag, aber erstelle NEUES Objekt
     const newSet = {
       weight: lastSet ? lastSet.weight : '',
       reps: lastSet ? lastSet.reps : '',
@@ -95,7 +47,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-      {/* HEADER - Always visible, clickable to expand/collapse */}
       <div 
         className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
           isExpanded ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
@@ -111,7 +62,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                   {completedSets}/{totalSets}
                 </span>
               )}
-              {/* Expand/Collapse Icon */}
               <svg 
                 className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                 fill="none" 
@@ -122,7 +72,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
               </svg>
             </div>
             
-            {/* Progress Bar (only when collapsed) */}
             {!isExpanded && (
               <div className="mt-2 flex items-center gap-2">
                 <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
@@ -137,10 +86,8 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
               </div>
             )}
             
-            {/* SMART HINT & EQUIPMENT INFO (only when expanded) */}
             {isExpanded && exercise.targetDetails && (
               <div className="mt-1 flex flex-wrap gap-2">
-                 {/* Progressions-Hinweis */}
                 {exercise.targetDetails.hint && (
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       exercise.targetDetails.hint.includes("Steigerung") ? "bg-green-100 text-green-700" :
@@ -151,7 +98,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                   </span>
                 )}
 
-                {/* Anzeige: Welches Gerät? (Wichtig für Kabelzug) */}
                 {exercise.equipment_names && (
                     <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
                         🏗️ {exercise.equipment_names.join(" oder ")}
@@ -160,7 +106,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
               </div>
             )}
              
-             {/* Letzte Werte (only when expanded) */}
              {isExpanded && exercise.targetDetails?.lastWeight && exercise.targetDetails.lastWeight !== "-" && (
                  <div className="text-xs text-gray-400 mt-1">
                     Last: {exercise.targetDetails.lastWeight}kg x {exercise.targetDetails.lastReps}
@@ -168,11 +113,10 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
              )}
           </div>
           
-          {/* Löschen Button (only when expanded) */}
           {isExpanded && onDelete && (
             <button 
               onClick={(e) => {
-                e.stopPropagation(); // Verhindert Toggle beim Löschen
+                e.stopPropagation();
                 onDelete();
               }} 
               className="text-gray-300 hover:text-red-500"
@@ -185,96 +129,20 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
         </div>
       </div>
 
-      {/* SETS TABLE - Only visible when expanded */}
       {isExpanded && (
       <div className="p-4 space-y-3">
-        
-        {/* TIMER - Prominent Display */}
-        {restTimer !== null && (
-          <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-200">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 text-center">
-                <div className="text-xs text-gray-500 font-semibold mb-1">Pausenzeit</div>
-                <div 
-                  className={`text-4xl font-bold tabular-nums transition-colors ${
-                    restTimer > 0 ? 'text-blue-600' : 'text-red-600'
-                  }`}
-                  onClick={() => setShowTimerConfig(!showTimerConfig)}
-                >
-                  {restTimer > 0 
-                    ? `${Math.floor(restTimer / 60)}:${String(restTimer % 60).padStart(2, '0')}`
-                    : `-${Math.floor(Math.abs(restTimer) / 60)}:${String(Math.abs(restTimer) % 60).padStart(2, '0')}`
-                  }
-                </div>
-                {restTimer <= 0 && (
-                  <div className="text-xs text-red-600 font-semibold mt-1 animate-pulse">
-                    Zeit abgelaufen!
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => setRestTimer(null)}
-                  className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs font-semibold"
-                  title="Timer stoppen"
-                >
-                  Stop
-                </button>
-                <button
-                  onClick={() => setRestTimer(restDuration)}
-                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-semibold"
-                  title="Timer neu starten"
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-            
-            {/* Timer Konfiguration */}
-            {showTimerConfig && (
-              <div className="mt-3 pt-3 border-t border-blue-200">
-                <div className="text-xs text-gray-600 mb-2 font-semibold">Pausendauer anpassen:</div>
-                <div className="flex gap-2">
-                  {[60, 90, 120, 150, 180].map(seconds => (
-                    <button
-                      key={seconds}
-                      onClick={() => {
-                        setRestDuration(seconds);
-                        setRestTimer(seconds);
-                        setShowTimerConfig(false);
-                      }}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        restDuration === seconds
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {seconds}s
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Labels */}
         <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 uppercase font-semibold text-center mb-1">
           <div className="col-span-1">#</div>
           <div className="col-span-4">kg</div>
           <div className="col-span-4">Reps</div>
-          <div className="col-span-2"></div>{/* Checkbox */}
-          <div className="col-span-1"></div>{/* Delete Set */}
+          <div className="col-span-2"></div>
+          <div className="col-span-1"></div>
         </div>
 
-        {/* Rows */}
         {exercise.sets.map((set, i) => (
           <div key={i} className={`grid grid-cols-12 gap-2 items-center transition-opacity ${set.completed ? 'opacity-50' : ''}`}>
-            
-            {/* Index */}
             <div className="col-span-1 text-center font-bold text-gray-400">{i + 1}</div>
             
-            {/* Weight Input */}
             <div className="col-span-4">
               <input 
                 type="number" 
@@ -283,11 +151,10 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                 onChange={(e) => handleSetUpdate(i, 'weight', e.target.value)}
                 className={`w-full p-2 text-center border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold
                     ${exercise.targetDetails ? 'bg-green-50 border-green-200 text-green-900' : 'bg-gray-50'}
-                `}
+                    `}
               />
             </div>
             
-            {/* Reps Input */}
             <div className="col-span-4">
               <input 
                 type="number" 
@@ -295,12 +162,11 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                 value={set.reps}
                 onChange={(e) => handleSetUpdate(i, 'reps', e.target.value)}
                 className={`w-full p-2 text-center border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold
-                     ${exercise.targetDetails ? 'bg-green-50 border-green-200 text-green-900' : 'bg-gray-50'}
-                `}
+                    ${exercise.targetDetails ? 'bg-green-50 border-green-200 text-green-900' : 'bg-gray-50'}
+                    `}
               />
             </div>
             
-            {/* Check Button */}
             <div className="col-span-2 flex justify-center">
               <button 
                 onClick={() => toggleSetComplete(i)}
@@ -316,14 +182,12 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
               </button>
             </div>
 
-            {/* Delete Set Button (X) */}
             <div className="col-span-1 flex justify-center">
                 <button onClick={() => removeSet(i)} className="text-gray-300 hover:text-red-400 text-xs">✕</button>
             </div>
           </div>
         ))}
 
-        {/* Add Set Button */}
         <button 
             onClick={addSet}
             className="w-full py-2 mt-2 text-xs font-bold text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded dashed border border-transparent hover:border-blue-200 transition-all"
@@ -331,12 +195,10 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
             + SATZ
         </button>
 
-        {/* FOOTER: RPE & Notes */}
         <div className="mt-4 pt-3 border-t border-gray-100 space-y-3">
              <div>
                 <label className="text-xs text-gray-400 font-semibold block mb-2">RPE (Anstrengung 1-10)</label>
                 <div className="space-y-2">
-                  {/* Obere Reihe: 1-5 (selten genutzt) */}
                   <div className="flex gap-1.5">
                     {[1, 2, 3, 4, 5].map(value => (
                       <button
@@ -353,7 +215,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                       </button>
                     ))}
                   </div>
-                  {/* Untere Reihe: 6-10 (häufig genutzt) */}
                   <div className="flex gap-1.5">
                     {[6, 7, 8, 9, 10].map(value => (
                       <button
@@ -383,7 +244,6 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
                 />
              </div>
         </div>
-
       </div>
       )}
     </div>
