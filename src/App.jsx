@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense, useRef, useEffect } from 'react';
 import ActiveWorkout from './components/ActiveWorkout';
 import Navigation from './components/Navigation';
 import Login from './components/Login';
@@ -20,6 +20,8 @@ function App() {
   // View Management
   const [currentView, setCurrentView] = useState('home');
   const [smartPlan, setSmartPlan] = useState(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   // Workout Start Handler (von Views aufgerufen)
   const handleStartWorkout = (plan) => {
@@ -32,6 +34,20 @@ function App() {
     setSmartPlan(null);
     setCurrentView('home'); // Zurück zur Startseite
   };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isMenuOpen]);
 
   // Show login screen if not authenticated
   if (authLoading) {
@@ -54,68 +70,110 @@ function App() {
           <span className="text-2xl">💪</span>
           <h1 className="text-xl font-bold tracking-tight">Gym App</h1>
         </div>
-        {/* User Info & Sync */}
-        <div className="flex items-center gap-3">
-          {/* Theme Toggle */}
+        
+        {/* Hamburger Menu */}
+        <div className="relative" ref={menuRef}>
           <button
-            onClick={toggleTheme}
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-all active:scale-95"
-            title={isDark ? 'Helles Design' : 'Dunkles Design'}
+            title="Menü"
           >
-            {isDark ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </button>
-          {/* User Email */}
-          <div className="text-right">
-            <div className="text-xs opacity-75">Eingeloggt als</div>
-            <div className="text-xs font-medium">{user.email}</div>
-          </div>
-          {/* Logout Button */}
-          <button
-            onClick={signOut}
-            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-all active:scale-95"
-            title="Abmelden"
-          >
-            Logout
-          </button>
-          {/* Sync Info */}
-          <div className="text-right border-l border-white/20 pl-3">
-            <div className="text-xs opacity-75">Last Sync</div>
-            <div className="text-xs font-medium">
-              {lastSyncTime 
-                ? new Date(lastSyncTime).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-                : 'Nie'
-              }
-            </div>
-          </div>
-          <button
-            onClick={triggerManualSync}
-            disabled={isSyncingManually || !isOnline}
-            className={`p-2 rounded-lg transition-all ${
-              isSyncingManually 
-                ? 'bg-white/20 cursor-wait' 
-                : isOnline
-                  ? 'bg-white/20 hover:bg-white/30 active:scale-95'
-                  : 'bg-white/10 opacity-50 cursor-not-allowed'
-            }`}
-            title={!isOnline ? 'Offline - Sync nicht möglich' : 'Jetzt synchronisieren'}
-          >
-            <svg 
-              className={`w-5 h-5 ${isSyncingManually ? 'animate-spin' : ''}`}
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+
+          {/* Dropdown Menu */}
+          {isMenuOpen && (
+            <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {/* User Info Section */}
+              <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Eingeloggt als</div>
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{user.email}</div>
+              </div>
+
+              {/* Menu Items */}
+              <div className="py-2">
+                {/* Theme Toggle */}
+                <button
+                  onClick={() => {
+                    toggleTheme();
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200"
+                >
+                  {isDark ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                  )}
+                  <span className="text-sm">{isDark ? 'Helles Design' : 'Dunkles Design'}</span>
+                </button>
+
+                {/* Sync Section */}
+                <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Letzte Synchronisation</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {lastSyncTime 
+                          ? new Date(lastSyncTime).toLocaleString('de-DE', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })
+                          : 'Nie'
+                        }
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        triggerManualSync();
+                        setIsMenuOpen(false);
+                      }}
+                      disabled={isSyncingManually || !isOnline}
+                      className={`p-2 rounded-lg transition-all ${
+                        isSyncingManually 
+                          ? 'bg-blue-100 dark:bg-blue-900/50 cursor-wait' 
+                          : isOnline
+                            ? 'bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900 active:scale-95'
+                            : 'bg-gray-100 dark:bg-gray-700 opacity-50 cursor-not-allowed'
+                      }`}
+                      title={!isOnline ? 'Offline - Sync nicht möglich' : 'Jetzt synchronisieren'}
+                    >
+                      <svg 
+                        className={`w-5 h-5 ${isSyncingManually ? 'animate-spin text-blue-600 dark:text-blue-400' : 'text-blue-600 dark:text-blue-400'}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Logout */}
+                <button
+                  onClick={() => {
+                    signOut();
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-700"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span className="text-sm font-medium">Abmelden</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 

@@ -175,43 +175,92 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
 
       {isExpanded && (
       <div className="p-4 space-y-3">
-        <div className="grid grid-cols-12 gap-2 text-xs text-gray-600 dark:text-gray-400 uppercase font-semibold text-center mb-1">
-          <div className="col-span-1">#</div>
-          <div className="col-span-4">kg</div>
-          <div className="col-span-4">Reps</div>
-          <div className="col-span-2"></div>
-          <div className="col-span-1"></div>
+        <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 text-xs text-gray-600 dark:text-gray-400 uppercase font-semibold text-center mb-1">
+          <div>#</div>
+          <div>kg</div>
+          <div>Reps</div>
+          <div></div>
+          <div></div>
         </div>
 
         {exercise.sets.map((set, i) => (
-          <div key={i} className={`grid grid-cols-12 gap-2 items-center transition-opacity ${set.completed ? 'opacity-50' : ''}`}>
-            <div className="col-span-1 text-center font-bold text-gray-600 dark:text-gray-400">{i + 1}</div>
+          <div key={i} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center transition-opacity ${set.completed ? 'opacity-50' : ''}`}>
+            <div className="text-center font-bold text-gray-600 dark:text-gray-400">{i + 1}</div>
             
-            <div className="col-span-4">
+            {/* Gewicht Gruppe */}
+            <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 max-w-[140px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const currentWeight = parseFloat(set.weight) || 0;
+                  if (currentWeight >= 2.5) {
+                    handleSetUpdate(i, 'weight', String(currentWeight - 2.5));
+                  }
+                }}
+                className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
+              >
+                −
+              </button>
               <input 
-                type="number" 
+                type="text"
+                inputMode="decimal"
                 placeholder="kg"
                 value={set.weight}
                 onChange={(e) => handleSetUpdate(i, 'weight', e.target.value)}
-                className={`w-full p-2 text-center border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-900 dark:text-gray-100
-                    ${exercise.targetDetails ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'}
+                className={`flex-1 min-w-0 p-1.5 text-center border rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm text-gray-900 dark:text-gray-100
+                    ${exercise.targetDetails ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-500'}
                     `}
               />
+              <button
+                type="button"
+                onClick={() => {
+                  const currentWeight = parseFloat(set.weight) || 0;
+                  handleSetUpdate(i, 'weight', String(currentWeight + 2.5));
+                }}
+                className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
+              >
+                +
+              </button>
             </div>
             
-            <div className="col-span-4">
+            {/* Reps Gruppe */}
+            <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 max-w-[120px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const currentReps = parseInt(set.reps) || 0;
+                  if (currentReps > 0) {
+                    handleSetUpdate(i, 'reps', String(currentReps - 1));
+                  }
+                }}
+                className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
+              >
+                −
+              </button>
               <input 
-                type="number" 
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 placeholder="Reps"
                 value={set.reps}
                 onChange={(e) => handleSetUpdate(i, 'reps', e.target.value)}
-                className={`w-full p-2 text-center border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-900 dark:text-gray-100
-                    ${exercise.targetDetails ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'}
+                className={`flex-1 min-w-0 p-1.5 text-center border rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm text-gray-900 dark:text-gray-100
+                    ${exercise.targetDetails ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-500'}
                     `}
               />
+              <button
+                type="button"
+                onClick={() => {
+                  const currentReps = parseInt(set.reps) || 0;
+                  handleSetUpdate(i, 'reps', String(currentReps + 1));
+                }}
+                className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
+              >
+                +
+              </button>
             </div>
             
-            <div className="col-span-2 flex justify-center">
+            <div className="flex justify-center">
               <button 
                 onClick={() => toggleSetComplete(i)}
                 className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
@@ -226,8 +275,8 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
               </button>
             </div>
 
-            <div className="col-span-1 flex justify-center">
-                <button onClick={() => removeSet(i)} className="text-gray-400 dark:text-gray-300 hover:text-red-400 text-xs">✕</button>
+            <div className="flex justify-center">
+              <button onClick={() => removeSet(i)} className="text-gray-400 dark:text-gray-300 hover:text-red-400 text-xs">✕</button>
             </div>
           </div>
         ))}
