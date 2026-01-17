@@ -55,7 +55,7 @@ export default function Exercises() {
   // Filtern
   const filteredExercises = exercises.filter(ex => {
     const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (ex.muscle_group && ex.muscle_group.toLowerCase().includes(searchQuery.toLowerCase()));
+                         (ex.category && ex.category.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesCategory = selectedCategory === 'all' || ex.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -178,22 +178,12 @@ export default function Exercises() {
                         {exercise.category}
                       </span>
                     )}
-                    {exercise.muscle_group && (
-                      <span className="text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded-md font-medium">
-                        {exercise.muscle_group}
-                      </span>
-                    )}
-                    {exercise.equipment_id && (
+                    {exercise.equipment_names && exercise.equipment_names.length > 0 && (
                       <span className="text-xs bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-1 rounded-md font-medium">
-                        Equipment
+                        {exercise.equipment_names.join(', ')}
                       </span>
                     )}
                   </div>
-                  {exercise.description && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">
-                      {exercise.description}
-                    </p>
-                  )}
                 </div>
                 <svg className="w-5 h-5 text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -219,9 +209,9 @@ export default function Exercises() {
                         {selectedExercise.category}
                       </span>
                     )}
-                    {selectedExercise.muscle_group && (
-                      <span className="text-xs bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-2 py-1 rounded-md font-semibold">
-                        {selectedExercise.muscle_group}
+                    {selectedExercise.equipment_names && selectedExercise.equipment_names.length > 0 && (
+                      <span className="text-xs bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300 px-2 py-1 rounded-md font-semibold">
+                        {selectedExercise.equipment_names.join(', ')}
                       </span>
                     )}
                   </div>
@@ -239,14 +229,13 @@ export default function Exercises() {
 
             {/* Details */}
             <div className="p-6 space-y-4">
-              {selectedExercise.description && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Beschreibung</h4>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{selectedExercise.description}</p>
-                </div>
-              )}
-              
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
+                {selectedExercise.default_sets && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Standard Sätze</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{selectedExercise.default_sets}</p>
+                  </div>
+                )}
                 {selectedExercise.min_reps && (
                   <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
                     <p className="text-xs text-gray-500 dark:text-gray-400">Min Reps</p>
@@ -260,13 +249,6 @@ export default function Exercises() {
                   </div>
                 )}
               </div>
-
-              {selectedExercise.instructions && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Anleitung</h4>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{selectedExercise.instructions}</p>
-                </div>
-              )}
             </div>
 
             {/* Footer */}
@@ -276,6 +258,39 @@ export default function Exercises() {
                 className="flex-1 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg font-semibold transition-colors"
               >
                 Schließen
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Übung "${selectedExercise.name}" wirklich löschen?`)) return;
+                  
+                  try {
+                    // Lösche aus Supabase
+                    const { error } = await supabase
+                      .from('ref_exercises')
+                      .delete()
+                      .eq('id', selectedExercise.id);
+                    
+                    if (error) throw error;
+                    
+                    // Lösche lokal
+                    await db.ref_exercises.delete(selectedExercise.id);
+                    
+                    // UI aktualisieren
+                    setExercises(exercises.filter(ex => ex.id !== selectedExercise.id));
+                    setSelectedExercise(null);
+                  } catch (err) {
+                    console.error('Fehler beim Löschen:', err);
+                    alert('Fehler beim Löschen: ' + err.message);
+                  }
+                }}
+                disabled={!isOnline}
+                className={`py-3 px-4 rounded-lg font-semibold transition-colors ${
+                  isOnline
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                }`}
+              >
+                Löschen
               </button>
               <button
                 onClick={() => {

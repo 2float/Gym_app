@@ -31,3 +31,4 @@ scripts/
 *.csv
 *.xls
 *.xlsx
+*.sql

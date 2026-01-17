@@ -92,10 +92,14 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       }
     }
 
-    // Füge Übung mit Defaults hinzu
+    // Füge Übung mit Defaults hinzu (nur echte DB-Felder)
     setExercises([...exercises, { 
       name: selectedExercise.name,
-      muscle_group: selectedExercise.muscle_group,
+      category: selectedExercise.category,
+      equipment_names: selectedExercise.equipment_names,
+      default_sets: selectedExercise.default_sets,
+      min_reps: selectedExercise.min_reps,
+      max_reps: selectedExercise.max_reps,
       sets: [{ 
         weight: lastWeight, // Pre-fill mit letztem Gewicht
         reps: lastReps,     // Pre-fill mit letzten Reps
@@ -104,6 +108,9 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       targetDetails // Zeigt "Last: X kg x Y" an
     }]);
     setShowExerciseSelector(false);
+    
+    // Öffne die neu hinzugefügte Übung automatisch
+    setExpandedExerciseIndex(exercises.length);
   };
 
   // Workout speichern
