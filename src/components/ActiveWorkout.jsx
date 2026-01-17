@@ -108,6 +108,11 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
   // Workout speichern
   const finishWorkout = async () => {
+    // 0. BESTÄTIGUNG
+    if (!confirm('✅ Training jetzt beenden und speichern?')) {
+      return; // Abbruch wenn User "Nein" klickt
+    }
+
     // 1. VALIDIERUNG: Check auf fehlende RPE bei erledigten Sätzen
     const missingRpe = exercises.some(ex => 
         ex.sets.some(s => s.completed) && (!ex.rpe || ex.rpe.trim() === "")
@@ -274,7 +279,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       )}
 
       {/* FOOTER ACTION */}
-      <div className="fixed bottom-4 left-4 right-4 max-w-md mx-auto">
+      <div className="mt-8 mb-4">
           <button 
             onClick={finishWorkout}
             className="w-full bg-green-500 text-white py-4 rounded-xl text-xl font-bold shadow-lg hover:bg-green-600 active:scale-95 transition-all"
