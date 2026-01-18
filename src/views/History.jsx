@@ -5,11 +5,70 @@ export default function History() {
   const { history } = useApp();
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
+  // Calculate stats for visualizations
+  const getLast30DaysActivity = () => {
+    const today = new Date();
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      
+      const dateStr = date.toISOString().split('T')[0];
+      const workoutsOnDay = history.filter(log => {
+        const logDate = new Date(log.date);
+        logDate.setHours(0, 0, 0, 0);
+        return logDate.toISOString().split('T')[0] === dateStr;
+      }).length;
+      
+      days.push({ date, workouts: workoutsOnDay });
+    }
+    return days;
+  };
+
+  const getRoutineDistribution = () => {
+    const distribution = {};
+    history.forEach(log => {
+      const name = log.workoutName || log.workout_name || 'Unbekannt';
+      distribution[name] = (distribution[name] || 0) + 1;
+    });
+    return Object.entries(distribution)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  };
+
+  const activityData = getLast30DaysActivity();
+  const routineDistribution = getRoutineDistribution();
+  const maxWorkouts = Math.max(...activityData.map(d => d.workouts), 1);
+  const currentStreak = (() => {
+    let streak = 0;
+    const sortedHistory = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < 30; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(checkDate.getDate() - i);
+      const hasWorkout = sortedHistory.some(log => {
+        const logDate = new Date(log.date);
+        logDate.setHours(0, 0, 0, 0);
+        return logDate.getTime() === checkDate.getTime();
+      });
+      
+      if (hasWorkout) {
+        streak++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+    return streak;
+  })();
+
   return (
     <div className="space-y-6 pb-20">
       {/* Header */}
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 p-6 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-100 dark:bg-orange-900/50 rounded-lg">
               <svg className="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -25,6 +84,102 @@ export default function History() {
             {history.length} gesamt
           </span>
         </div>
+
+        {/* Activity Stats */}
+        {history.length > 0 && (
+          <div className="space-y-4">
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{currentStreak}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Tage Streak</div>
+              </div>
+              <div className="bg-white dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{history.length}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Workouts</div>
+              </div>
+              <div className="bg-white dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {activityData.filter(d => d.workouts > 0).length}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Aktive Tage (30d)</div>
+              </div>
+            </div>
+
+            {/* Activity Heatmap */}
+            <div className="bg-white dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-3">Letzte 30 Tage</div>
+              <div className="grid grid-cols-10 gap-1">
+                {activityData.map((day, idx) => {
+                  const intensity = day.workouts === 0 ? 0 : Math.min((day.workouts / maxWorkouts) * 4, 4);
+                  const colors = [
+                    'bg-gray-100 dark:bg-gray-700',
+                    'bg-orange-200 dark:bg-orange-900/40',
+                    'bg-orange-300 dark:bg-orange-800/60',
+                    'bg-orange-400 dark:bg-orange-700/80',
+                    'bg-orange-500 dark:bg-orange-600'
+                  ];
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className={`aspect-square rounded-sm ${colors[Math.floor(intensity)]} relative group cursor-pointer transition-transform hover:scale-125`}
+                      title={`${day.date.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })}: ${day.workouts} Workout${day.workouts !== 1 ? 's' : ''}`}
+                    >
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-10">
+                        {day.date.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })}: {day.workouts}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between mt-3 text-xs text-gray-500 dark:text-gray-400">
+                <span>Weniger</span>
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4].map(level => (
+                    <div
+                      key={level}
+                      className={`w-3 h-3 rounded-sm ${
+                        level === 0 ? 'bg-gray-100 dark:bg-gray-700' :
+                        level === 1 ? 'bg-orange-200 dark:bg-orange-900/40' :
+                        level === 2 ? 'bg-orange-300 dark:bg-orange-800/60' :
+                        level === 3 ? 'bg-orange-400 dark:bg-orange-700/80' :
+                        'bg-orange-500 dark:bg-orange-600'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span>Mehr</span>
+              </div>
+            </div>
+
+            {/* Routine Distribution */}
+            {routineDistribution.length > 0 && (
+              <div className="bg-white dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-3">Top Routinen</div>
+                <div className="space-y-2">
+                  {routineDistribution.map(([name, count]) => {
+                    const percentage = (count / history.length) * 100;
+                    return (
+                      <div key={name}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{name}</span>
+                          <span className="text-gray-500 dark:text-gray-400">{count}× ({percentage.toFixed(0)}%)</span>
+                        </div>
+                        <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-orange-400 to-orange-600 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* History List */}

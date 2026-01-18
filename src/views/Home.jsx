@@ -175,15 +175,7 @@ export default function Home({ onStartWorkout }) {
           )}
         </div>
         <div className="text-center mb-6">
-          <div className="inline-block p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full mb-3">
-            <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-300 bg-clip-text text-transparent">
-            Bereit für Gains?
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">Wähle dein Workout für heute.</p>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300">Wähle dein Workout für heute.</p>
         </div>
 
         {/* EMPFOHLENES WORKOUT */}
