@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../db';
-import { supabase } from '../supabaseClient';
-import { getAvailableRoutines } from '../services/smartWorkoutService';
+import { getAllTemplates, getRoutineDetails } from '../services/smartWorkoutService';
 import { useApp } from '../contexts/AppContext';
 import TemplateEditor from '../components/TemplateEditor';
 
@@ -19,7 +18,7 @@ export default function Templates() {
   useEffect(() => {
     const loadRoutines = async () => {
       try {
-        const data = await getAvailableRoutines();
+        const data = await getAllTemplates();
         setRoutines(data);
       } catch (error) {
         console.error("Fehler beim Laden der Routinen:", error);
@@ -35,14 +34,8 @@ export default function Templates() {
     setSelectedRoutine(routine);
     setLoadingDetails(true);
     try {
-      // Hole Routine mit allen Übungen von Supabase
-      const { data, error } = await supabase
-        .from('ref_routines')
-        .select('*, ref_routine_exercises(sort_order, exercise_id, ref_exercises(*))')
-        .eq('id', routine.id)
-        .single();
-
-      if (error) throw error;
+      // Hole Routine mit allen Übungen vom Service
+      const data = await getRoutineDetails(routine.id);
 
       // Zähle wie oft diese Routine gemacht wurde
       const workoutCount = history.filter(
@@ -181,22 +174,6 @@ export default function Templates() {
           })}
         </div>
       )}
-
-      {/* Add Button */}
-      <button 
-        disabled={!isOnline}
-        className={`w-full py-4 border-2 border-dashed rounded-xl flex items-center justify-center gap-2 font-semibold transition-all ${
-          isOnline
-            ? 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 dark:hover:text-purple-400'
-            : 'border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50'
-        }`}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-        Neues Template erstellen
-        {!isOnline && <span className="text-xs">(Offline)</span>}
-      </button>
 
       {/* Detail Modal */}
       {selectedRoutine && (
@@ -339,7 +316,7 @@ export default function Templates() {
             setSelectedRoutine(null);
             // Routines neu laden
             setLoading(true);
-            const data = await getAvailableRoutines();
+            const data = await getAllTemplates();
             setRoutines(data);
             setLoading(false);
           }}

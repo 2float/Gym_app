@@ -54,11 +54,10 @@ export default function Programs() {
       if (!isOnline) {
         throw new Error('Programmwechsel erfordert Internet');
       }
-      const idNum = Number(programId);
-      await setActiveProgram(idNum);
-      const current = programs.find(p => p.id === idNum) || null;
+      await setActiveProgram(programId);
+      const current = programs.find(p => p.id === programId) || null;
       setActiveProgramState(current);
-      const routines = await getProgramRoutines(idNum);
+      const routines = await getProgramRoutines(programId);
       setProgramRoutines(routines);
     } catch (err) {
       console.error(err);
@@ -141,11 +140,11 @@ export default function Programs() {
 
         <div className="grid grid-cols-1 gap-4">
           {programs.map(p => {
-            const isActive = Number(activeProgram?.id) === Number(p.id);
+            const isActive = activeProgram?.id === p.id;
             return (
               <div
                 key={p.id}
-                onClick={() => handleProgramSelect(Number(p.id))}
+                onClick={() => handleProgramSelect(p.id)}
                 className={`p-4 rounded-xl border cursor-pointer transition-colors
                   ${isActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900'}`}
               >

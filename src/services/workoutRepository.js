@@ -114,14 +114,20 @@ export const workoutRepository = {
 
     const entry = Array.isArray(cfgData) ? cfgData[0] : null;
     if (entry && entry.value) {
-      const id = parseInt(entry.value, 10);
-      if (!isNaN(id)) {
-        const { data, error } = await supabase
-          .from('ref_training_programs')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (!error && data) return data;
+      // Use the value directly (supports both UUID strings and numeric IDs)
+      const { data, error } = await supabase
+        .from('ref_training_programs')
+        .select('*')
+        .eq('id', entry.value)
+        .single();
+      
+      if (error) {
+        // Invalid/outdated ID in app_config (e.g., old numeric ID when DB uses UUIDs)
+        console.warn('Stored active_program_id is invalid, falling back to default:', error);
+        // Clear the invalid value
+        await supabase.from('app_config').delete().eq('key', 'active_program_id');
+      } else if (data) {
+        return data;
       }
     }
 
@@ -223,6 +229,20 @@ export const workoutRepository = {
       .order('name', { ascending: true });
     if (error) throw error;
     return data || [];
+  },
+
+  /**
+   * Holt Details einer spezifischen Routine inkl. verknüpfter Übungen.
+   */
+  async getRoutineDetails(routineId) {
+    const { data, error } = await supabase
+      .from('ref_routines')
+      .select('*, ref_routine_exercises(sort_order, exercise_id, ref_exercises(*))')
+      .eq('id', routineId)
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
   /**

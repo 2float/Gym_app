@@ -191,6 +191,15 @@ export const getAllTemplates = async () => {
   }
 };
 
+export const getRoutineDetails = async (routineId) => {
+  try {
+    return await workoutRepository.getRoutineDetails(routineId);
+  } catch (error) {
+    console.error('SmartEngine: Failed to load routine details', error);
+    throw error;
+  }
+};
+
 /** Program CRUD **/
 export const createProgram = async (name, description = '', isDefault = false) => {
   try {
