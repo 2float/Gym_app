@@ -1,6 +1,7 @@
 export default function Navigation({ currentView, onViewChange }) {
   const views = [
     { id: 'home', label: 'Home', icon: '🏠' },
+    { id: 'programs', label: 'Programme', icon: '🧩' },
     { id: 'templates', label: 'Templates', icon: '📋' },
     { id: 'exercises', label: 'Übungen', icon: '💪' },
     { id: 'history', label: 'History', icon: '📊' },
@@ -8,7 +9,7 @@ export default function Navigation({ currentView, onViewChange }) {
 
   return (
     <nav className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 fixed bottom-0 left-0 right-0 z-20 shadow-lg">
-      <div className="max-w-md mx-auto grid grid-cols-4 gap-1 p-2">
+      <div className="max-w-md mx-auto grid grid-cols-5 gap-1 p-2">
         {views.map(view => (
           <button
             key={view.id}

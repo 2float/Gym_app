@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
-import { generateNextWorkout, generateSpecificWorkout, getAvailableRoutines, getRecommendedRoutine } from '../services/smartWorkoutService';
+import { 
+  generateNextWorkout, 
+  generateSpecificWorkout, 
+  getAvailableRoutines, 
+  getRecommendedRoutine,
+  getAvailablePrograms,
+  setActiveProgram as setActiveProgramService,
+  getActiveProgram
+} from '../services/smartWorkoutService';
 import { useApp } from '../contexts/AppContext';
 
 export default function Home({ onStartWorkout }) {
@@ -10,6 +18,9 @@ export default function Home({ onStartWorkout }) {
   const [recommendedRoutine, setRecommendedRoutine] = useState(null);
   const [loadingRecommendation, setLoadingRecommendation] = useState(true);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
+  const [programs, setPrograms] = useState([]);
+  const [activeProgram, setActiveProgram] = useState(null);
+  const [loadingPrograms, setLoadingPrograms] = useState(true);
 
   // Routines laden
   useEffect(() => {
@@ -29,6 +40,25 @@ export default function Home({ onStartWorkout }) {
       }
     };
     loadRoutines();
+  }, []);
+
+  // Programme laden + aktives Programm bestimmen
+  useEffect(() => {
+    const loadPrograms = async () => {
+      try {
+        const [list, current] = await Promise.all([
+          getAvailablePrograms(),
+          getActiveProgram()
+        ]);
+        setPrograms(list);
+        setActiveProgram(current);
+      } catch (error) {
+        console.error("Fehler beim Laden der Programme:", error);
+      } finally {
+        setLoadingPrograms(false);
+      }
+    };
+    loadPrograms();
   }, []);
 
   // Empfehlung laden
@@ -91,6 +121,26 @@ export default function Home({ onStartWorkout }) {
     }
   };
 
+  // Programm ändern
+  const handleProgramChange = async (programId) => {
+    try {
+      if (!isOnline) {
+        throw new Error("Programmwechsel erfordert Internet!");
+      }
+      await setActiveProgramService(programId);
+      const current = await getActiveProgram();
+      setActiveProgram(current);
+      // Routines und Empfehlung aktualisieren
+      const routinesData = await getAvailableRoutines();
+      setRoutines(routinesData);
+      const recommended = await getRecommendedRoutine();
+      setRecommendedRoutine(recommended);
+    } catch (error) {
+      console.error("Fehler beim Setzen des Programms:", error);
+      setErrorMsg("Fehler beim Setzen des Programms: " + error.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* ERROR MESSAGE */}
@@ -107,6 +157,23 @@ export default function Home({ onStartWorkout }) {
 
       {/* WELCOME SECTION */}
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 p-6 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700">
+        {/* Program Selector */}
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Trainingsprogramm</label>
+          <select
+            className="w-full p-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100"
+            value={activeProgram?.id || ''}
+            onChange={(e) => handleProgramChange(parseInt(e.target.value, 10))}
+            disabled={loadingPrograms || !isOnline}
+          >
+            {programs.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {!isOnline && (
+            <p className="text-xs text-yellow-600 dark:text-yellow-300 mt-1">Programmwechsel offline nicht möglich</p>
+          )}
+        </div>
         <div className="text-center mb-6">
           <div className="inline-block p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full mb-3">
             <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

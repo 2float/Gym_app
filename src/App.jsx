@@ -9,6 +9,7 @@ import { useTheme } from './contexts/ThemeContext';
 // Lazy-loaded Views
 const Home = lazy(() => import('./views/Home'));
 const Templates = lazy(() => import('./views/Templates'));
+const Programs = lazy(() => import('./views/Programs'));
 const Exercises = lazy(() => import('./views/Exercises'));
 const History = lazy(() => import('./views/History'));
 
@@ -194,6 +195,7 @@ function App() {
           }>
             {currentView === 'home' && <Home onStartWorkout={handleStartWorkout} />}
             {currentView === 'templates' && <Templates />}
+            {currentView === 'programs' && <Programs />}
             {currentView === 'exercises' && <Exercises />}
             {currentView === 'history' && <History />}
           </Suspense>

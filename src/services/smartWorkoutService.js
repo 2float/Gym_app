@@ -15,8 +15,8 @@ import { workoutLogic } from './workoutLogic';
  */
 export const getAvailableRoutines = async () => {
   try {
-    // 1. Versuche, das Standard-Programm zu laden
-    const program = await workoutRepository.getDefaultProgram();
+    // 1. Versuche, das aktive Programm zu laden (app_config oder Default)
+    const program = await workoutRepository.getActiveProgram();
     
     if (program) {
       // 2a. Lade Routinen des Programms (sortiert)
@@ -101,10 +101,130 @@ export const generateNextWorkout = async () => {
   return generateSpecificWorkout(nextRoutineName);
 };
 
+/**
+ * Programme verwalten (UI-Unterstützung):
+ */
+export const getAvailablePrograms = async () => {
+  try {
+    return await workoutRepository.getPrograms();
+  } catch (error) {
+    console.error('SmartEngine: Failed to load programs', error);
+    return [];
+  }
+};
+
+export const setActiveProgram = async (programId) => {
+  try {
+    await workoutRepository.setActiveProgram(programId);
+    return true;
+  } catch (error) {
+    console.error('SmartEngine: Failed to set active program', error);
+    throw error;
+  }
+};
+
+export const getActiveProgram = async () => {
+  try {
+    return await workoutRepository.getActiveProgram();
+  } catch (error) {
+    console.error('SmartEngine: Failed to get active program', error);
+    return null;
+  }
+};
+
+/** Program Mapping Helpers **/
+export const getProgramRoutines = async (programId) => {
+  try {
+    return await workoutRepository.getRoutinesForProgram(programId);
+  } catch (error) {
+    console.error('SmartEngine: Failed to get program routines', error);
+    return [];
+  }
+};
+
+export const addRoutineToProgram = async (programId, routineId, sortOrder) => {
+  try {
+    await workoutRepository.addRoutineToProgram(programId, routineId, sortOrder);
+    return true;
+  } catch (error) {
+    console.error('SmartEngine: Failed to add routine to program', error);
+    throw error;
+  }
+};
+
+export const removeRoutineFromProgram = async (programId, routineId) => {
+  try {
+    await workoutRepository.removeRoutineFromProgram(programId, routineId);
+    return true;
+  } catch (error) {
+    console.error('SmartEngine: Failed to remove routine from program', error);
+    throw error;
+  }
+};
+
+export const reorderProgramRoutines = async (programId, routineIdsInOrder) => {
+  try {
+    await workoutRepository.reorderProgramRoutines(programId, routineIdsInOrder);
+    return true;
+  } catch (error) {
+    console.error('SmartEngine: Failed to reorder program routines', error);
+    throw error;
+  }
+};
+
+export const getAllTemplates = async () => {
+  try {
+    return await workoutRepository.getAllTemplates();
+  } catch (error) {
+    console.error('SmartEngine: Failed to load all templates', error);
+    return [];
+  }
+};
+
+/** Program CRUD **/
+export const createProgram = async (name, description = '', isDefault = false) => {
+  try {
+    const created = await workoutRepository.createProgram({ name, description, is_default: isDefault });
+    return created;
+  } catch (error) {
+    console.error('SmartEngine: Failed to create program', error);
+    throw error;
+  }
+};
+
+export const updateProgram = async (programId, fields) => {
+  try {
+    return await workoutRepository.updateProgram(programId, fields);
+  } catch (error) {
+    console.error('SmartEngine: Failed to update program', error);
+    throw error;
+  }
+};
+
+export const deleteProgram = async (programId) => {
+  try {
+    return await workoutRepository.deleteProgram(programId);
+  } catch (error) {
+    console.error('SmartEngine: Failed to delete program', error);
+    throw error;
+  }
+};
+
 // Default Export für Abwärtskompatibilität, falls nötig
 export default {
   getAvailableRoutines,
   getRecommendedRoutine,
   generateSpecificWorkout,
-  generateNextWorkout
+  generateNextWorkout,
+  getAvailablePrograms,
+  setActiveProgram,
+  getActiveProgram,
+  getProgramRoutines,
+  addRoutineToProgram,
+  removeRoutineFromProgram,
+  reorderProgramRoutines,
+  getAllTemplates,
+  createProgram,
+  updateProgram,
+  deleteProgram
 };
