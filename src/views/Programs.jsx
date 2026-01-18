@@ -20,6 +20,7 @@ export default function Programs() {
   const [allTemplates, setAllTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -53,10 +54,11 @@ export default function Programs() {
       if (!isOnline) {
         throw new Error('Programmwechsel erfordert Internet');
       }
-      await setActiveProgram(programId);
-      const current = programs.find(p => p.id === programId) || null;
+      const idNum = Number(programId);
+      await setActiveProgram(idNum);
+      const current = programs.find(p => p.id === idNum) || null;
       setActiveProgramState(current);
-      const routines = await getProgramRoutines(programId);
+      const routines = await getProgramRoutines(idNum);
       setProgramRoutines(routines);
     } catch (err) {
       console.error(err);
@@ -126,38 +128,39 @@ export default function Programs() {
       )}
 
       <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-bold mb-3">Programme</h2>
-        <select
-          className="w-full p-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100"
-          value={activeProgram?.id || ''}
-          onChange={(e) => handleProgramSelect(parseInt(e.target.value, 10))}
-          disabled={isLoading}
-        >
-          {programs.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        {/* Create Program */}
-        <div className="mt-4">
-          <h4 className="text-sm font-semibold mb-2">Neues Programm</h4>
-          <ProgramCreateForm 
-            onCreate={async (name, description, setActive) => {
-              try {
-                if (!isOnline) throw new Error('Erfordert Internet');
-                const created = await createProgram(name, description, false);
-                const updatedList = await getAvailablePrograms();
-                setPrograms(updatedList);
-                if (setActive) {
-                  await setActiveProgram(created.id);
-                  setActiveProgramState(created);
-                  const routines = await getProgramRoutines(created.id);
-                  setProgramRoutines(routines);
-                }
-              } catch (err) {
-                setErrorMsg('Fehler beim Erstellen: ' + err.message);
-              }
-            }}
-          />
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-bold">Programme</h2>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+            disabled={isLoading}
+          >
+            Neues Programm erstellen
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {programs.map(p => {
+            const isActive = Number(activeProgram?.id) === Number(p.id);
+            return (
+              <div
+                key={p.id}
+                onClick={() => handleProgramSelect(Number(p.id))}
+                className={`p-4 rounded-xl border cursor-pointer transition-colors
+                  ${isActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</div>
+                  {isActive && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">Aktiv</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {programs.length === 0 && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">Keine Programme verfügbar</p>
+          )}
         </div>
       </div>
 
@@ -202,16 +205,45 @@ export default function Programs() {
           )}
         </div>
       </div>
+
+      {/* Create Program Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl border border-gray-200 dark:border-gray-700 p-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-3">Neues Programm erstellen</h3>
+            <ProgramCreateForm
+              onCreate={async (name, description, setActive) => {
+                try {
+                  if (!isOnline) throw new Error('Erfordert Internet');
+                  const created = await createProgram(name, description, false);
+                  const updatedList = await getAvailablePrograms();
+                  setPrograms(updatedList);
+                  if (setActive) {
+                    await setActiveProgram(created.id);
+                    setActiveProgramState(created);
+                    const routines = await getProgramRoutines(created.id);
+                    setProgramRoutines(routines);
+                  }
+                  setIsModalOpen(false);
+                } catch (err) {
+                  setErrorMsg('Fehler beim Erstellen: ' + err.message);
+                }
+              }}
+              onCancel={() => setIsModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ProgramCreateForm({ onCreate }) {
+function ProgramCreateForm({ onCreate, onCancel }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [setActive, setSetActive] = useState(true);
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <input
         className="w-full p-2 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded"
         placeholder="Name (z.B. 4er Split)"
@@ -228,13 +260,21 @@ function ProgramCreateForm({ onCreate }) {
         <input type="checkbox" checked={setActive} onChange={(e) => setSetActive(e.target.checked)} />
         Nach Erstellung aktivieren
       </label>
-      <button
-        onClick={() => onCreate(name.trim(), description.trim(), setActive)}
-        disabled={!name.trim()}
-        className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-      >
-        Programm erstellen
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onCreate(name.trim(), description.trim(), setActive)}
+          disabled={!name.trim()}
+          className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+        >
+          Programm erstellen
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-lg"
+        >
+          Abbrechen
+        </button>
+      </div>
     </div>
   );
 }

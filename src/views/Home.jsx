@@ -162,12 +162,12 @@ export default function Home({ onStartWorkout }) {
           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Trainingsprogramm</label>
           <select
             className="w-full p-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100"
-            value={activeProgram?.id || ''}
+            value={String(activeProgram?.id ?? '')}
             onChange={(e) => handleProgramChange(parseInt(e.target.value, 10))}
             disabled={loadingPrograms || !isOnline}
           >
             {programs.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={String(p.id)}>{p.name}</option>
             ))}
           </select>
           {!isOnline && (
