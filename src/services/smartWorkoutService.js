@@ -144,7 +144,17 @@ export const getProgramRoutines = async (programId) => {
 
 export const addRoutineToProgram = async (programId, routineId, sortOrder) => {
   try {
-    await workoutRepository.addRoutineToProgram(programId, routineId, sortOrder);
+    let order = sortOrder;
+    
+    // Business Rule: Auto-Increment Order if missing
+    if (order == null) {
+      const currentRoutines = await workoutRepository.getRoutinesForProgram(programId);
+      // Safety check if array is null/undefined
+      const count = Array.isArray(currentRoutines) ? currentRoutines.length : 0;
+      order = count + 1;
+    }
+
+    await workoutRepository.addRoutineToProgram(programId, routineId, order);
     return true;
   } catch (error) {
     console.error('SmartEngine: Failed to add routine to program', error);
