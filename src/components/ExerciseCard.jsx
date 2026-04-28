@@ -1,6 +1,6 @@
 import React from 'react';
 
-const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand }) => {
+const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isExpanded, onToggleExpand }) => {
 
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
@@ -157,18 +157,44 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, isExpanded, onToggleExpand
              )}
           </div>
           
-          {isExpanded && onDelete && (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }} 
-              className="text-gray-600 dark:text-gray-300 hover:text-red-500"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
+          {isExpanded && (
+            <div className="flex items-center gap-1">
+              {onMoveUp && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+                  className="text-gray-400 dark:text-gray-500 hover:text-blue-500 p-1"
+                  title="Nach oben"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                </button>
+              )}
+              {onMoveDown && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+                  className="text-gray-400 dark:text-gray-500 hover:text-blue-500 p-1"
+                  title="Nach unten"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
+              {onDelete && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }} 
+                  className="text-gray-600 dark:text-gray-300 hover:text-red-500 p-1"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

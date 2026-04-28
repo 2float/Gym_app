@@ -6,6 +6,64 @@ import { useAuth } from './AuthContext';
 
 const AppContext = createContext();
 
+/**
+ * Pusht alle lokal gespeicherten, noch nicht synchronisierten Workout-Logs nach Supabase.
+ * Muss VOR dem Cloud→Local-Sync aufgerufen werden, damit keine Daten verloren gehen.
+ */
+async function pushUnsyncedLogs(userId) {
+  try {
+    const unsyncedLogs = await db.workout_logs
+      .where('synced')
+      .equals(0) // Dexie speichert false als 0
+      .toArray();
+
+    // Fallback: auch Einträge ohne synced-Feld oder mit explizit false
+    const allLogs = await db.workout_logs.toArray();
+    const logsToSync = allLogs.filter(log => !log.synced);
+
+    if (logsToSync.length === 0) return 0;
+
+    console.log(`📤 ${logsToSync.length} unsynced Workout(s) gefunden, pushe nach Supabase...`);
+
+    let syncedCount = 0;
+    for (const log of logsToSync) {
+      // Timestamp für Supabase aufbereiten (lokale Zeit als naive UTC)
+      const localTime = new Date(log.date);
+      const year = localTime.getFullYear();
+      const month = String(localTime.getMonth() + 1).padStart(2, '0');
+      const day = String(localTime.getDate()).padStart(2, '0');
+      const hours = String(localTime.getHours()).padStart(2, '0');
+      const minutes = String(localTime.getMinutes()).padStart(2, '0');
+      const seconds = String(localTime.getSeconds()).padStart(2, '0');
+      const naiveTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
+
+      const supabasePayload = {
+        date: naiveTimestamp,
+        workout_name: log.workoutName || log.workout_name,
+        duration_ms: log.duration_ms,
+        exercises: log.exercises,
+        user_id: userId
+      };
+
+      const { error } = await supabase.from('workout_logs').insert([supabasePayload]);
+
+      if (!error) {
+        await db.workout_logs.update(log.id, { synced: true });
+        syncedCount++;
+        console.log(`  ☁️ Workout "${supabasePayload.workout_name}" (${log.date}) nachträglich synchronisiert`);
+      } else {
+        console.error(`  ❌ Fehler beim Nachsync von "${supabasePayload.workout_name}":`, error);
+      }
+    }
+
+    console.log(`📤 ${syncedCount}/${logsToSync.length} Workouts erfolgreich nachsynchronisiert`);
+    return syncedCount;
+  } catch (err) {
+    console.error('❌ pushUnsyncedLogs fehlgeschlagen:', err);
+    return 0;
+  }
+}
+
 export function AppProvider({ children }) {
   const { user } = useAuth(); // Get current user
   const [history, setHistory] = useState([]);
@@ -31,6 +89,12 @@ export function AppProvider({ children }) {
       
       // Nur syncen wenn online UND authenticated
       if (isOnline && user && !isCancelled) {
+        // WICHTIG: Zuerst unsynced Logs hochladen, bevor Cloud→Local überschreibt
+        await pushUnsyncedLogs(user.id);
+
+        // Unsynced Logs sichern (falls Push fehlgeschlagen)
+        const stillUnsynced = (await db.workout_logs.toArray()).filter(log => !log.synced);
+
         console.log("🔄 Lade aktuelle Daten aus der Cloud...");
         const { data: cloudLogs, error } = await supabase
           .from('workout_logs')
@@ -41,10 +105,21 @@ export function AppProvider({ children }) {
           // Map workout_name to workoutName for local storage
           const mappedLogs = cloudLogs.map(log => ({
             ...log,
-            workoutName: log.workout_name
+            workoutName: log.workout_name,
+            synced: true // WICHTIG: Cloud-Daten als synced markieren
           }));
           await db.workout_logs.clear();
           await db.workout_logs.bulkPut(mappedLogs);
+
+          // Unsynced Logs wiederherstellen (waren noch nicht in der Cloud)
+          if (stillUnsynced.length > 0) {
+            console.log(`🔒 ${stillUnsynced.length} unsynced Workout(s) wiederherstellen...`);
+            for (const log of stillUnsynced) {
+              delete log.id; // Neue lokale ID generieren lassen
+              await db.workout_logs.add(log);
+            }
+          }
+
           localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
           console.log(`📥 ${localLogs.length} Workout Logs synchronisiert!`);
         } else if (error) {
@@ -117,6 +192,14 @@ export function AppProvider({ children }) {
     try {
       console.log('🔄 Manueller Sync gestartet...');
       
+      // WICHTIG: Zuerst unsynced Logs hochladen, bevor Cloud→Local überschreibt
+      if (user) {
+        await pushUnsyncedLogs(user.id);
+      }
+
+      // Unsynced Logs sichern (falls Push fehlgeschlagen)
+      const stillUnsynced = (await db.workout_logs.toArray()).filter(log => !log.synced);
+
       // 1. Workout Logs von Cloud holen
       const { data: cloudLogs, error: logsError } = await supabase
         .from('workout_logs')
@@ -128,9 +211,20 @@ export function AppProvider({ children }) {
         // Map workout_name to workoutName for local storage
         const mappedLogs = cloudLogs.map(log => ({
           ...log,
-          workoutName: log.workout_name
+          workoutName: log.workout_name,
+          synced: true // WICHTIG: Cloud-Daten als synced markieren
         }));
         await db.workout_logs.bulkPut(mappedLogs);
+
+        // Unsynced Logs wiederherstellen (waren noch nicht in der Cloud)
+        if (stillUnsynced.length > 0) {
+          console.log(`🔐 ${stillUnsynced.length} unsynced Workout(s) wiederherstellen...`);
+          for (const log of stillUnsynced) {
+            delete log.id; // Neue lokale ID generieren lassen
+            await db.workout_logs.add(log);
+          }
+        }
+
         console.log(`📥 ${cloudLogs.length} Workout Logs synchronisiert`);
       }
 

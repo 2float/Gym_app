@@ -15,5 +15,15 @@ db.version(2).stores({
   ref_routine_exercises: 'id, routine_id, exercise_id'
 });
 
+// v3: Index auf synced, damit wir unsynced Logs effizient finden
+db.version(3).stores({
+  workout_logs: '++id, date, workoutName, synced',
+  app_config: 'key',
+  ref_equipment: 'id, name',
+  ref_exercises: 'id, name, category',
+  ref_routines: 'id, name, sort_order',
+  ref_routine_exercises: 'id, routine_id, exercise_id'
+});
+
 // Helper Log
-console.log("Database initialized (v2)");
+console.log("Database initialized (v3)");

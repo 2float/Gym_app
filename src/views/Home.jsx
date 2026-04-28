@@ -315,6 +315,11 @@ export default function Home({ onStartWorkout }) {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-base text-gray-900 dark:text-gray-100">{log.workoutName || log.workout_name || "Training"}</span>
+                      {!log.synced && (
+                        <span className="text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-medium">
+                          offline
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400 dark:text-gray-500">
                         {dateStr} • {timeStr}
                       </span>

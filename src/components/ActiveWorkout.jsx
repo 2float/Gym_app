@@ -61,6 +61,16 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     }
   };
 
+  // Übung verschieben
+  const handleMoveExercise = (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= exercises.length) return;
+    const newExercises = [...exercises];
+    [newExercises[index], newExercises[newIndex]] = [newExercises[newIndex], newExercises[index]];
+    setExercises(newExercises);
+    setExpandedExerciseIndex(newIndex);
+  };
+
   // Neue Übung aus Katalog hinzufügen
   const handleExerciseSelect = async (selectedExercise) => {
     // History laden, um Default-Werte zu finden
@@ -170,7 +180,7 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
       const id = await db.workout_logs.add(logEntryLocal);
       console.log("✅ Locally saved ID:", id);
 
-      // 4. CLOUD SYNC (Best Effort)
+      // 4. CLOUD SYNC (Best Effort mit Timeout)
       if (isOnline) {
         // Lokale Zeit als "naive UTC" speichern (wie beim Import)
         const localTime = new Date(endTime);
@@ -194,15 +204,27 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
             // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
         };
 
-        const { error } = await supabase.from('workout_logs').insert([supabasePayload]);
-        
-        if (!error) {
-          await db.workout_logs.update(id, { synced: true });
-          console.log("☁️ Synced to Supabase!");
-        } else {
-            console.error("❌ Supabase Upload Error:", error);
-            // Kein Throw, damit User im UI fertig wird -> Sync retry beim nächsten Start
+        try {
+          // Timeout: Max 5 Sekunden warten, dann aufgeben
+          const syncPromise = supabase.from('workout_logs').insert([supabasePayload]);
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Cloud sync timeout')), 5000)
+          );
+
+          const { error } = await Promise.race([syncPromise, timeoutPromise]);
+          
+          if (!error) {
+            await db.workout_logs.update(id, { synced: true });
+            console.log("☁️ Synced to Supabase!");
+          } else {
+              console.error("❌ Supabase Upload Error:", error);
+          }
+        } catch (syncErr) {
+          console.warn("⚠️ Cloud sync übersprungen (offline/timeout):", syncErr.message);
+          // Lokal gespeichert, wird beim nächsten Sync nachgeholt
         }
+      } else {
+        console.log("📴 Offline - Workout lokal gespeichert, wird beim nächsten Sync hochgeladen");
       }
     } catch (err) {
       console.error("Save failed:", err);
@@ -263,6 +285,8 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
               exercise={exercise}
               onUpdate={(updatedEx) => handleExerciseUpdate(index, updatedEx)}
               onDelete={() => handleDeleteExercise(index)}
+              onMoveUp={index > 0 ? () => handleMoveExercise(index, -1) : null}
+              onMoveDown={index < exercises.length - 1 ? () => handleMoveExercise(index, 1) : null}
               isExpanded={expandedExerciseIndex === index}
               onToggleExpand={() => setExpandedExerciseIndex(expandedExerciseIndex === index ? null : index)}
           />
