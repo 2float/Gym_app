@@ -205,6 +205,23 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
         };
 
         try {
+          // 🔍 Deduplizierung: Prüfe ob Workout bereits existiert (gleicher Timestamp auf Minute, Name, User)
+          const dateMinute = naiveTimestamp.substring(0, 16); // YYYY-MM-DDTHH:MM
+          const { data: existing } = await supabase
+            .from('workout_logs')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('workout_name', supabasePayload.workout_name)
+            .gte('date', `${dateMinute}:00Z`)
+            .lt('date', `${dateMinute}:59Z`)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            console.log(`⏭️ Workout "${supabasePayload.workout_name}" bereits in Supabase (skip duplicate)`);
+            await db.workout_logs.update(id, { synced: true });
+            return;
+          }
+
           // Timeout: Max 5 Sekunden warten, dann aufgeben
           const syncPromise = supabase.from('workout_logs').insert([supabasePayload]);
           const timeoutPromise = new Promise((_, reject) => 
