@@ -1,5 +1,20 @@
 import React from 'react';
 
+const stepWeight = (current, availableWeights, direction) => {
+  const sorted = availableWeights && availableWeights.length > 0
+    ? [...availableWeights].map(Number).sort((a, b) => a - b)
+    : null;
+  if (!sorted) {
+    const next = current + direction * 2.5;
+    return next >= 0 ? next : 0;
+  }
+  if (direction > 0) {
+    return sorted.find(w => w > current) ?? sorted[sorted.length - 1];
+  } else {
+    return [...sorted].reverse().find(w => w < current) ?? sorted[0];
+  }
+};
+
 const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isExpanded, onToggleExpand }) => {
 
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
@@ -219,15 +234,13 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
                 type="button"
                 onClick={() => {
                   const currentWeight = parseFloat(set.weight) || 0;
-                  if (currentWeight >= 2.5) {
-                    handleSetUpdate(i, 'weight', String(currentWeight - 2.5));
-                  }
+                  handleSetUpdate(i, 'weight', String(stepWeight(currentWeight, exercise.availableWeights, -1)));
                 }}
                 className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
               >
                 −
               </button>
-              <input 
+              <input
                 type="text"
                 inputMode="decimal"
                 placeholder="kg"
@@ -241,7 +254,7 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
                 type="button"
                 onClick={() => {
                   const currentWeight = parseFloat(set.weight) || 0;
-                  handleSetUpdate(i, 'weight', String(currentWeight + 2.5));
+                  handleSetUpdate(i, 'weight', String(stepWeight(currentWeight, exercise.availableWeights, 1)));
                 }}
                 className="w-7 h-8 flex items-center justify-center bg-white dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded text-gray-700 dark:text-gray-200 font-bold text-lg transition-colors active:scale-95"
               >

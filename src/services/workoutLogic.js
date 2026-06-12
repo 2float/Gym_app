@@ -97,6 +97,8 @@ export const workoutLogic = {
       return {
         id: exercise.id,
         name: exercise.name,
+        equipment_names: exercise.equipment_names,
+        availableWeights,
         sets: Array(calculation.sets).fill({
           weight: calculation.weight,
           reps: calculation.reps,
