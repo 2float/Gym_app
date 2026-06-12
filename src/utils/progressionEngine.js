@@ -80,19 +80,27 @@ export const calculateTarget = (exerciseDef, lastLogEntry, availableWeights, con
 
   // ── EXPLOSIVE ────────────────────────────────────────────────────────────
   if (progressionType === 'explosive') {
-    if (!lastLogEntry) {
-      const targetWeight = maxWeight * (1 + weightOffsetPct / 100);
+    const lastWeights = lastLogEntry ? parseWeights(lastLogEntry.weight, targetSets) : null;
+    const lastReps = lastLogEntry ? parseReps(lastLogEntry.reps) : null;
+    const lastMaxWeight = lastWeights ? Math.max(...lastWeights) : null;
+    const lastMaxReps = lastReps ? Math.max(...lastReps) : null;
+
+    // Kein Log ODER letztes Training war klar im Hypertrophie-Bereich (Reps > explosiver Max):
+    // weight_offset_pct auf letztes Gewicht (oder Equipment-Max) anwenden
+    const wasHypertrophySession = lastMaxReps != null && lastMaxReps > repMax;
+    if (!lastLogEntry || wasHypertrophySession) {
+      const base = lastMaxWeight ?? maxWeight;
+      const targetWeight = base * (1 + weightOffsetPct / 100);
       return {
-        weight: sorted ? getNearestWeight(targetWeight, sorted) : targetWeight,
+        weight: sorted ? getNearestWeight(targetWeight, sorted) : Math.round(targetWeight * 2) / 2,
         reps: repMin,
         sets: targetSets,
-        hint: "⚡ Explosiv",
+        hint: "⚡ Explosiv – Einstieg",
         isCalculated: true,
       };
     }
-    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
     return {
-      weight: Math.max(...lastWeights),
+      weight: lastMaxWeight,
       reps: repMin,
       sets: targetSets,
       hint: "⚡ Konzentrisch MAXIMAL EXPLOSIV – Gewicht halten",

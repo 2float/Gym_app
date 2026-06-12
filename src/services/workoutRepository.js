@@ -152,9 +152,18 @@ export const workoutRepository = {
         ref_routines (
           id,
           name,
+          progression_type,
+          rpe_target_min,
+          rpe_target_max,
+          weight_offset_pct,
           ref_routine_exercises (
             sort_order,
-            exercise_id
+            exercise_id,
+            progression_type,
+            sets_override,
+            reps_min_override,
+            reps_max_override,
+            execution_note
           )
         )
       `)
