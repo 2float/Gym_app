@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function TemplateEditor({ template, onSave, onCancel }) {
+  const { user } = useAuth();
   const [name, setName] = useState(template?.name || '');
   const [selectedExercises, setSelectedExercises] = useState([]);
   const [availableExercises, setAvailableExercises] = useState([]);
@@ -90,9 +92,10 @@ export default function TemplateEditor({ template, onSave, onCancel }) {
         // CREATE
         const { data, error } = await supabase
           .from('ref_routines')
-          .insert({ 
+          .insert({
             name: name.trim(),
-            sort_order: 999 // Am Ende einfügen
+            sort_order: 999,
+            user_id: user.id
           })
           .select()
           .single();

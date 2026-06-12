@@ -23,9 +23,10 @@ export const workoutRepository = {
    * Erstellt ein neues Programm.
    */
   async createProgram({ name, description = '', is_default = false }) {
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('ref_training_programs')
-      .insert({ name, description, is_default })
+      .insert({ name, description, is_default, user_id: user.id })
       .select('*')
       .single();
     if (error) throw error;
@@ -90,48 +91,52 @@ export const workoutRepository = {
    * Setzt das aktive Programm global über app_config.
    */
   async setActiveProgram(programId) {
+    const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase
-      .from('app_config')
-      .upsert({ key: 'active_program_id', value: String(programId) }, { onConflict: 'key' });
+      .from('user_config')
+      .upsert(
+        { user_id: user.id, key: 'active_program_id', value: String(programId) },
+        { onConflict: 'user_id,key' }
+      );
     if (error) throw error;
     return true;
   },
 
   /**
-   * Holt das aktive Programm: zuerst aus app_config, sonst Default.
+   * Holt das aktive Programm: zuerst aus user_config, sonst Default.
    */
   async getActiveProgram() {
-    // Versuche app_config zu lesen
+    const { data: { user } } = await supabase.auth.getUser();
     const { data: cfgData, error: cfgError } = await supabase
-      .from('app_config')
+      .from('user_config')
       .select('*')
+      .eq('user_id', user.id)
       .eq('key', 'active_program_id')
       .limit(1);
 
     if (cfgError) {
-      console.warn('Error reading app_config active_program_id:', cfgError);
+      console.warn('Error reading user_config active_program_id:', cfgError);
     }
 
     const entry = Array.isArray(cfgData) ? cfgData[0] : null;
     if (entry && entry.value) {
-      // Use the value directly (supports both UUID strings and numeric IDs)
       const { data, error } = await supabase
         .from('ref_training_programs')
         .select('*')
         .eq('id', entry.value)
         .single();
-      
+
       if (error) {
-        // Invalid/outdated ID in app_config (e.g., old numeric ID when DB uses UUIDs)
         console.warn('Stored active_program_id is invalid, falling back to default:', error);
-        // Clear the invalid value
-        await supabase.from('app_config').delete().eq('key', 'active_program_id');
+        await supabase.from('user_config')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('key', 'active_program_id');
       } else if (data) {
         return data;
       }
     }
 
-    // Fallback: Default Programm
     return await workoutRepository.getDefaultProgram();
   },
 
@@ -263,17 +268,17 @@ export const workoutRepository = {
    * (Exercises, Equipment, App Config)
    */
   async getReferenceData() {
+    const { data: { user } } = await supabase.auth.getUser();
     const [exercisesRes, equipmentRes, configRes] = await Promise.all([
       supabase.from('ref_exercises').select('*'),
       supabase.from('ref_equipment').select('*'),
-      supabase.from('app_config').select('*')
+      supabase.from('user_config').select('*').eq('user_id', user.id)
     ]);
 
     if (exercisesRes.error) throw exercisesRes.error;
     if (equipmentRes.error) throw equipmentRes.error;
     if (configRes.error) throw configRes.error;
 
-    // Config Array zu Objekt umwandeln
     const config = {};
     configRes.data?.forEach(c => config[c.key] = c.value);
 

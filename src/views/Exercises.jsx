@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import { useApp } from '../contexts/AppContext';
+import { useAuth } from '../contexts/AuthContext';
 import ExerciseEditor from '../components/ExerciseEditor';
 
 export default function Exercises() {
   const { isOnline } = useApp();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -259,53 +261,49 @@ export default function Exercises() {
               >
                 Schließen
               </button>
-              <button
-                onClick={async () => {
-                  if (!confirm(`Übung "${selectedExercise.name}" wirklich löschen?`)) return;
-                  
-                  try {
-                    // Lösche aus Supabase
-                    const { error } = await supabase
-                      .from('ref_exercises')
-                      .delete()
-                      .eq('id', selectedExercise.id);
-                    
-                    if (error) throw error;
-                    
-                    // Lösche lokal
-                    await db.ref_exercises.delete(selectedExercise.id);
-                    
-                    // UI aktualisieren
-                    setExercises(exercises.filter(ex => ex.id !== selectedExercise.id));
-                    setSelectedExercise(null);
-                  } catch (err) {
-                    console.error('Fehler beim Löschen:', err);
-                    alert('Fehler beim Löschen: ' + err.message);
-                  }
-                }}
-                disabled={!isOnline}
-                className={`py-3 px-4 rounded-lg font-semibold transition-colors ${
-                  isOnline
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                }`}
-              >
-                Löschen
-              </button>
-              <button
-                onClick={() => {
-                  setEditingExercise(selectedExercise);
-                  setShowExerciseEditor(true);
-                }}
-                disabled={!isOnline}
-                className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
-                  isOnline
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                }`}
-              >
-                Bearbeiten {!isOnline && '(Offline)'}
-              </button>
+              {/* Edit/Delete nur für eigene Übungen (user_id gesetzt) */}
+              {selectedExercise.user_id === user?.id && (<>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Übung "${selectedExercise.name}" wirklich löschen?`)) return;
+                    try {
+                      const { error } = await supabase
+                        .from('ref_exercises')
+                        .delete()
+                        .eq('id', selectedExercise.id);
+                      if (error) throw error;
+                      await db.ref_exercises.delete(selectedExercise.id);
+                      setExercises(exercises.filter(ex => ex.id !== selectedExercise.id));
+                      setSelectedExercise(null);
+                    } catch (err) {
+                      console.error('Fehler beim Löschen:', err);
+                      alert('Fehler beim Löschen: ' + err.message);
+                    }
+                  }}
+                  disabled={!isOnline}
+                  className={`py-3 px-4 rounded-lg font-semibold transition-colors ${
+                    isOnline
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                  }`}
+                >
+                  Löschen
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingExercise(selectedExercise);
+                    setShowExerciseEditor(true);
+                  }}
+                  disabled={!isOnline}
+                  className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
+                    isOnline
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                  }`}
+                >
+                  Bearbeiten {!isOnline && '(Offline)'}
+                </button>
+              </>)}
             </div>
           </div>
         </div>

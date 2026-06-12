@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ExerciseEditor({ exercise, onSave, onCancel }) {
+  const { user } = useAuth();
   const [name, setName] = useState(exercise?.name || '');
   const [category, setCategory] = useState(exercise?.category || 'compound');
   const [defaultSets, setDefaultSets] = useState(exercise?.default_sets || 3);
@@ -53,10 +55,10 @@ export default function ExerciseEditor({ exercise, onSave, onCancel }) {
         // Lokal aktualisieren
         await db.ref_exercises.update(exercise.id, exerciseData);
       } else {
-        // CREATE
+        // CREATE — immer user-owned
         const { data, error } = await supabase
           .from('ref_exercises')
-          .insert(exerciseData)
+          .insert({ ...exerciseData, user_id: user.id })
           .select()
           .single();
 

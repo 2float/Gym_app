@@ -25,5 +25,15 @@ db.version(3).stores({
   ref_routine_exercises: 'id, routine_id, exercise_id'
 });
 
-// Helper Log
-console.log("Database initialized (v3)");
+// v4: user_config für per-user Einstellungen (aktives Programm, RPE-Ziele)
+db.version(4).stores({
+  workout_logs: '++id, date, workoutName, synced',
+  app_config: 'key',
+  ref_equipment: 'id, name',
+  ref_exercises: 'id, name, category',
+  ref_routines: 'id, name, sort_order',
+  ref_routine_exercises: 'id, routine_id, exercise_id',
+  user_config: '[user_id+key]'
+});
+
+console.log("Database initialized (v4)");
