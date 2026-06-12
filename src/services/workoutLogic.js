@@ -68,14 +68,23 @@ export const workoutLogic = {
       weightOffsetPct: routine.weight_offset_pct ?? 0,
     };
 
-    // 1. Übungen filtern und sortieren
-    const routineExercises = (routine.ref_routine_exercises || [])
+    // 1. Übungen filtern und sortieren — Link-Daten behalten
+    const routineLinks = (routine.ref_routine_exercises || [])
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map(link => allExercises.find(e => e.id === link.exercise_id))
-      .filter(e => !!e);
+      .map(link => ({ link, exercise: allExercises.find(e => e.id === link.exercise_id) }))
+      .filter(({ exercise }) => !!exercise);
 
     // 2. Smart Targets berechnen
-    const smartExercises = routineExercises.map(exercise => {
+    const smartExercises = routineLinks.map(({ link, exercise }) => {
+      // Per-Übung progression_type überschreibt Routine-Default (NULL = erben)
+      const exerciseProgressionType = link.progression_type || routineConfig.progressionType;
+      const exerciseConfig = {
+        ...routineConfig,
+        progressionType: exerciseProgressionType,
+        // weightOffset nur für explosive Übungen anwenden
+        weightOffsetPct: exerciseProgressionType === 'explosive' ? routineConfig.weightOffsetPct : 0,
+      };
+
       // A. Letzten Log für diese spezifische Übung finden
       let lastLogEntry = null;
       for (const log of recentLogs) {
@@ -99,14 +108,14 @@ export const workoutLogic = {
       }
 
       // C. Progression berechnen
-      const calculation = calculateTarget(exercise, lastLogEntry, availableWeights, routineConfig);
+      const calculation = calculateTarget(exercise, lastLogEntry, availableWeights, exerciseConfig);
 
       return {
         id: exercise.id,
         name: exercise.name,
         equipment_names: exercise.equipment_names,
         availableWeights,
-        progressionType: routineConfig.progressionType,
+        progressionType: exerciseProgressionType,
         sets: Array(calculation.sets).fill({
           weight: calculation.weight,
           reps: calculation.reps,
