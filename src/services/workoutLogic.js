@@ -59,24 +59,31 @@ export const workoutLogic = {
    * Verbindet Routine-Struktur mit Übungsdaten, Equipment und Progression.
    */
   buildWorkoutPlan(routine, allExercises, allEquipment, config, recentLogs) {
+    // Routine-Kontext: progression_type + RPE-Ziele aus Routine (Fallback auf globale Config)
+    const routineConfig = {
+      ...config,
+      progressionType: routine.progression_type || 'hypertrophy',
+      rpeTargetMin: routine.rpe_target_min ?? parseFloat(config?.rpe_ziel_min ?? 8),
+      rpeTargetMax: routine.rpe_target_max ?? parseFloat(config?.rpe_ziel_max ?? 9),
+      weightOffsetPct: routine.weight_offset_pct ?? 0,
+    };
+
     // 1. Übungen filtern und sortieren
-    // (ref_routine_exercises ist im Routine-Objekt genestet)
     const routineExercises = (routine.ref_routine_exercises || [])
       .sort((a, b) => a.sort_order - b.sort_order)
       .map(link => allExercises.find(e => e.id === link.exercise_id))
-      .filter(e => !!e); // Filtere kaputte Links
+      .filter(e => !!e);
 
     // 2. Smart Targets berechnen
     const smartExercises = routineExercises.map(exercise => {
       // A. Letzten Log für diese spezifische Übung finden
       let lastLogEntry = null;
       for (const log of recentLogs) {
-        // Log.exercises ist ein JSON Array in der DB
         if (log.exercises && Array.isArray(log.exercises)) {
           const found = log.exercises.find(e => e.name === exercise.name);
           if (found) {
             lastLogEntry = found;
-            break; 
+            break;
           }
         }
       }
@@ -91,14 +98,15 @@ export const workoutLogic = {
         }
       }
 
-      // C. Progression berechnen (ruft die Engine auf)
-      const calculation = calculateTarget(exercise, lastLogEntry, availableWeights, config);
+      // C. Progression berechnen
+      const calculation = calculateTarget(exercise, lastLogEntry, availableWeights, routineConfig);
 
       return {
         id: exercise.id,
         name: exercise.name,
         equipment_names: exercise.equipment_names,
         availableWeights,
+        progressionType: routineConfig.progressionType,
         sets: Array(calculation.sets).fill({
           weight: calculation.weight,
           reps: calculation.reps,

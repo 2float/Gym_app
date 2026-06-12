@@ -47,90 +47,134 @@ const getNextWeight = (currentWeight, availableWeights) => {
   return currentWeight; // Schon Maximum erreicht
 };
 
+// Nächstes verfügbares Gewicht nahe einem Zielwert finden (closest)
+const getNearestWeight = (target, availableWeights) => {
+  if (!availableWeights || availableWeights.length === 0) return target;
+  const sorted = [...availableWeights].map(Number).sort((a, b) => a - b);
+  return sorted.reduce((prev, curr) =>
+    Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev
+  );
+};
+
 /**
  * BERECHNUNGS-KERN
- * * @param {Object} exerciseDef - Aus ref_exercises (min_reps, max_reps, etc.)
+ * @param {Object} exerciseDef - Aus ref_exercises (min_reps, max_reps, etc.)
  * @param {Object} lastLogEntry - Letzter Eintrag aus workout_logs für diese Übung
  * @param {Array} availableWeights - Array mit Gewichten (z.B. [2, 4, 6...])
- * @param {Object} config - Global Config (rpe_ziel_min, rpe_ziel_max)
+ * @param {Object} config - Config inkl. progressionType, rpeTargetMin/Max, weightOffsetPct
  */
 export const calculateTarget = (exerciseDef, lastLogEntry, availableWeights, config) => {
   const targetSets = exerciseDef.default_sets || 3;
   const repMin = exerciseDef.min_reps || 8;
   const repMax = exerciseDef.max_reps || 12;
-  const rpeZielMin = parseFloat(config?.rpe_ziel_min || 8);
-  const rpeZielMax = parseFloat(config?.rpe_ziel_max || 9);
+  const rpeZielMin = parseFloat(config?.rpeTargetMin ?? config?.rpe_ziel_min ?? 8);
+  const rpeZielMax = parseFloat(config?.rpeTargetMax ?? config?.rpe_ziel_max ?? 9);
+  const progressionType = config?.progressionType || 'hypertrophy';
+  const weightOffsetPct = config?.weightOffsetPct ?? 0;
 
-  // FALL 1: NEU (Kein Log vorhanden)
-  if (!lastLogEntry) {
-    const startWeight = availableWeights && availableWeights.length > 0 
-        ? Math.min(...availableWeights) 
-        : 0;
-    
+  const sorted = availableWeights && availableWeights.length > 0
+    ? [...availableWeights].map(Number).sort((a, b) => a - b)
+    : null;
+  const minWeight = sorted ? sorted[0] : 0;
+  const maxWeight = sorted ? sorted[sorted.length - 1] : 0;
+
+  // ── EXPLOSIVE ────────────────────────────────────────────────────────────
+  if (progressionType === 'explosive') {
+    if (!lastLogEntry) {
+      const targetWeight = maxWeight * (1 + weightOffsetPct / 100);
+      return {
+        weight: sorted ? getNearestWeight(targetWeight, sorted) : targetWeight,
+        reps: repMin,
+        sets: targetSets,
+        hint: "⚡ Explosiv",
+        isCalculated: true,
+      };
+    }
+    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
     return {
-      weight: startWeight,
+      weight: Math.max(...lastWeights),
       reps: repMin,
       sets: targetSets,
-      hint: "Neu",
-      isCalculated: true
+      hint: "⚡ Konzentrisch MAXIMAL EXPLOSIV – Gewicht halten",
+      isCalculated: true,
     };
   }
 
-  // FALL 2: ANALYSE DES LETZTEN TRAININGS
-  const lastReps = parseReps(lastLogEntry.reps); // Array [10, 10, 10]
-  const lastWeights = parseWeights(lastLogEntry.weight, targetSets); // Array [20, 20, 20]
-  const lastRPE = parseFloat(lastLogEntry.rpe || 0);
-
-  // Statistiken
-  const maxMovedWeight = Math.max(...lastWeights);
-  const minMovedReps = Math.min(...lastReps); // Schlechtester Satz
-  
-  // Checks
-  // War das Gewicht über alle Sätze gleich?
-  const isWeightUniform = lastWeights.every(w => w === maxMovedWeight) && lastWeights.length >= targetSets;
-  // Wurden überall die Max-Reps geschafft?
-  const allMaxRepsHit = lastReps.every(r => r >= repMax);
-
-  let result = {
+  // ── CORRECTIVE ───────────────────────────────────────────────────────────
+  if (progressionType === 'corrective') {
+    if (!lastLogEntry) {
+      return { weight: minWeight, reps: repMin, sets: targetSets, hint: "🩹 Neu", isCalculated: true };
+    }
+    const lastReps = parseReps(lastLogEntry.reps);
+    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
+    const maxMovedWeight = Math.max(...lastWeights);
+    const allMaxRepsHit = lastReps.every(r => r >= repMax);
+    if (allMaxRepsHit) {
+      return { weight: maxMovedWeight, reps: repMin, sets: targetSets, hint: "🩹 Reps bestätigt – nächste Stufe", isCalculated: true };
+    }
+    const minReps = Math.min(...lastReps);
+    return {
       weight: maxMovedWeight,
+      reps: Math.min(minReps + 1, repMax),
+      sets: targetSets,
+      hint: "🩹 Reps steigern",
+      isCalculated: true,
+    };
+  }
+
+  // ── ISOMETRIC ────────────────────────────────────────────────────────────
+  if (progressionType === 'isometric') {
+    if (!lastLogEntry) {
+      return { weight: minWeight, reps: repMin, sets: targetSets, hint: "🧘 Neu", isCalculated: true };
+    }
+    const lastReps = parseReps(lastLogEntry.reps);
+    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
+    const maxMovedWeight = Math.max(...lastWeights);
+    const minReps = Math.min(...lastReps);
+    return {
+      weight: maxMovedWeight,
+      reps: Math.min(minReps + 1, repMax),
+      sets: targetSets,
+      hint: "🧘 Haltezeit steigern",
+      isCalculated: true,
+    };
+  }
+
+  // ── HYPERTROPHY (default) ────────────────────────────────────────────────
+  if (!lastLogEntry) {
+    return {
+      weight: sorted ? minWeight : 0,
       reps: repMin,
       sets: targetSets,
-      hint: "",
-      isCalculated: true
-  };
+      hint: "Neu",
+      isCalculated: true,
+    };
+  }
 
-  // --- ENTSCHEIDUNGS-BAUM ---
+  const lastReps = parseReps(lastLogEntry.reps);
+  const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
+  const lastRPE = parseFloat(lastLogEntry.rpe || 0);
+  const maxMovedWeight = Math.max(...lastWeights);
+  const minMovedReps = Math.min(...lastReps);
+  const isWeightUniform = lastWeights.every(w => w === maxMovedWeight) && lastWeights.length >= targetSets;
+  const allMaxRepsHit = lastReps.every(r => r >= repMax);
+
+  let result = { weight: maxMovedWeight, reps: repMin, sets: targetSets, hint: "", isCalculated: true };
 
   if (isWeightUniform && allMaxRepsHit && lastRPE < rpeZielMax) {
-      // 1. STEIGERUNG (RPE erlaubt es & Leistung war da)
-      result.weight = getNextWeight(maxMovedWeight, availableWeights);
-      result.reps = repMin;
-      result.hint = "↑ Steigerung";
-      
-      if (lastRPE > 0 && lastRPE < rpeZielMin) {
-          result.hint += " (Easy!)";
-      }
-
+    result.weight = getNextWeight(maxMovedWeight, availableWeights);
+    result.hint = lastRPE > 0 && lastRPE < rpeZielMin ? "↑ Steigerung (Easy!)" : "↑ Steigerung";
   } else if (isWeightUniform && allMaxRepsHit && lastRPE >= rpeZielMax) {
-      // 2. HALTEN (Leistung da, aber Limit erreicht)
-      result.weight = maxMovedWeight;
-      result.reps = repMax; // Versuchen zu bestätigen
-      result.hint = `⚖️ Halten (RPE ${lastRPE})`;
-
+    result.weight = maxMovedWeight;
+    result.reps = repMax;
+    result.hint = `⚖️ Halten (RPE ${lastRPE})`;
   } else if (!isWeightUniform) {
-      // 3. KONSOLIDIEREN (Gewichte waren durcheinander)
-      result.weight = maxMovedWeight;
-      // Versuche die Reps zu matchen, die mit diesem Gewicht geschafft wurden (fallback repMin)
-      const index = lastWeights.indexOf(maxMovedWeight);
-      result.reps = lastReps[index] || repMin;
-      result.hint = "⚖️ Konsolidieren";
-
+    const index = lastWeights.indexOf(maxMovedWeight);
+    result.reps = lastReps[index] || repMin;
+    result.hint = "⚖️ Konsolidieren";
   } else {
-      // 4. REPS STEIGERN (Micro-Loading)
-      // Gewicht bleibt gleich, wir versuchen eine Rep mehr im schlechtesten Satz
-      result.weight = maxMovedWeight;
-      result.reps = Math.min(minMovedReps + 1, repMax);
-      result.hint = "📈 Reps steigern";
+    result.reps = Math.min(minMovedReps + 1, repMax);
+    result.hint = "📈 Reps steigern";
   }
 
   return result;
