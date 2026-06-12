@@ -107,8 +107,16 @@ export const workoutLogic = {
         }
       }
 
-      // C. Progression berechnen
-      const calculation = calculateTarget(exercise, lastLogEntry, availableWeights, exerciseConfig);
+      // C. Sets/Reps Overrides aus ref_routine_exercises anwenden
+      const exerciseDef = {
+        ...exercise,
+        default_sets: link.sets_override ?? exercise.default_sets,
+        min_reps: link.reps_min_override ?? exercise.min_reps,
+        max_reps: link.reps_max_override ?? exercise.max_reps,
+      };
+
+      // D. Progression berechnen
+      const calculation = calculateTarget(exerciseDef, lastLogEntry, availableWeights, exerciseConfig);
 
       return {
         id: exercise.id,
