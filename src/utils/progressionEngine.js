@@ -58,132 +58,124 @@ const getNearestWeight = (target, availableWeights) => {
 
 /**
  * BERECHNUNGS-KERN
- * @param {Object} exerciseDef - Aus ref_exercises (min_reps, max_reps, etc.)
- * @param {Object} lastLogEntry - Letzter Eintrag aus workout_logs für diese Übung
- * @param {Array} availableWeights - Array mit Gewichten (z.B. [2, 4, 6...])
- * @param {Object} config - Config inkl. progressionType, rpeTargetMin/Max, weightOffsetPct
+ * @param {Object} exerciseDef   - Aus ref_exercises (min_reps, max_reps, default_sets)
+ * @param {Array}  recentEntries - Letzte ≤5 Log-Einträge für diese Übung, neueste zuerst
+ *                                 Jeder Eintrag: { weight, reps, rpe, date }
+ * @param {Array}  availableWeights - Verfügbare Gewichte des Equipment
+ * @param {Object} config        - progressionType, rpeTargetMin/Max, weightOffsetPct
  */
-export const calculateTarget = (exerciseDef, lastLogEntry, availableWeights, config) => {
-  const targetSets = exerciseDef.default_sets || 3;
-  const repMin = exerciseDef.min_reps || 8;
-  const repMax = exerciseDef.max_reps || 12;
-  const rpeZielMin = parseFloat(config?.rpeTargetMin ?? config?.rpe_ziel_min ?? 8);
-  const rpeZielMax = parseFloat(config?.rpeTargetMax ?? config?.rpe_ziel_max ?? 9);
-  const progressionType = config?.progressionType || 'hypertrophy';
-  const weightOffsetPct = config?.weightOffsetPct ?? 0;
+export const calculateTarget = (exerciseDef, recentEntries, availableWeights, config) => {
+  const targetSets   = exerciseDef.default_sets || 3;
+  const repMin       = exerciseDef.min_reps || 8;
+  const repMax       = exerciseDef.max_reps || 12;
+  const rpeZielMax   = parseFloat(config?.rpeTargetMax ?? config?.rpe_ziel_max ?? 9);
+  const progressionType  = config?.progressionType || 'hypertrophy';
+  const weightOffsetPct  = config?.weightOffsetPct ?? 0;
 
-  const sorted = availableWeights && availableWeights.length > 0
+  const sorted = availableWeights?.length > 0
     ? [...availableWeights].map(Number).sort((a, b) => a - b)
     : null;
   const minWeight = sorted ? sorted[0] : 0;
   const maxWeight = sorted ? sorted[sorted.length - 1] : 0;
 
+  // Kompatibilität: einzelnes Objekt (alter Aufruf) → Array
+  const entries = Array.isArray(recentEntries)
+    ? recentEntries
+    : (recentEntries ? [recentEntries] : []);
+  const hasHistory = entries.length > 0;
+
+  // Alle Einträge vorparsen
+  const parsed = entries.map(e => {
+    const weights = parseWeights(e.weight, targetSets);
+    const reps    = parseReps(e.reps);
+    return {
+      maxWeight: weights.length > 0 ? Math.max(...weights) : 0,
+      minReps:   reps.length > 0 ? Math.min(...reps) : 0,
+      maxReps:   reps.length > 0 ? Math.max(...reps) : 0,
+      rpe:       parseFloat(e.rpe || 0),
+      date:      e.date,
+    };
+  });
+
   // ── EXPLOSIVE ────────────────────────────────────────────────────────────
   if (progressionType === 'explosive') {
-    const lastWeights = lastLogEntry ? parseWeights(lastLogEntry.weight, targetSets) : null;
-    const lastReps = lastLogEntry ? parseReps(lastLogEntry.reps) : null;
-    const lastMaxWeight = lastWeights ? Math.max(...lastWeights) : null;
-    const lastMaxReps = lastReps ? Math.max(...lastReps) : null;
-
-    // Kein Log ODER letztes Training war klar im Hypertrophie-Bereich (Reps > explosiver Max):
-    // weight_offset_pct auf letztes Gewicht (oder Equipment-Max) anwenden
-    const wasHypertrophySession = lastMaxReps != null && lastMaxReps > repMax;
-    if (!lastLogEntry || wasHypertrophySession) {
-      const base = lastMaxWeight ?? maxWeight;
-      const targetWeight = base * (1 + weightOffsetPct / 100);
-      return {
-        weight: sorted ? getNearestWeight(targetWeight, sorted) : Math.round(targetWeight * 2) / 2,
-        reps: repMin,
-        sets: targetSets,
-        hint: "⚡ Explosiv – Einstieg",
-        isCalculated: true,
-      };
+    if (!hasHistory) {
+      const target = maxWeight * (1 + weightOffsetPct / 100);
+      return { weight: sorted ? getNearestWeight(target, sorted) : Math.round(target * 2) / 2, reps: repMin, sets: targetSets, hint: "⚡ Explosiv – Einstieg", isCalculated: true };
     }
-    return {
-      weight: lastMaxWeight,
-      reps: repMin,
-      sets: targetSets,
-      hint: "⚡ Konzentrisch MAXIMAL EXPLOSIV – Gewicht halten",
-      isCalculated: true,
-    };
+    // Letzte Session wurde normal ausgeführt → Gewicht halten
+    if (entries[0]?.execution === 'normal') {
+      return { weight: parsed[0].maxWeight, reps: repMin, sets: targetSets, hint: "⚡ Zuletzt normal ausgeführt – Gewicht halten", isCalculated: true };
+    }
+    const refWeight = Math.max(...parsed.map(p => p.maxWeight));
+    if (parsed[0].maxReps > repMax) {
+      const target = refWeight * (1 + weightOffsetPct / 100);
+      return { weight: sorted ? getNearestWeight(target, sorted) : Math.round(target * 2) / 2, reps: repMin, sets: targetSets, hint: "⚡ Explosiv – Steigerung", isCalculated: true };
+    }
+    return { weight: refWeight, reps: repMin, sets: targetSets, hint: "⚡ Konzentrisch MAXIMAL EXPLOSIV – Gewicht halten", isCalculated: true };
   }
 
   // ── CORRECTIVE ───────────────────────────────────────────────────────────
   if (progressionType === 'corrective') {
-    if (!lastLogEntry) {
-      return { weight: minWeight, reps: repMin, sets: targetSets, hint: "🩹 Neu", isCalculated: true };
-    }
-    const lastReps = parseReps(lastLogEntry.reps);
-    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
-    const maxMovedWeight = Math.max(...lastWeights);
-    const allMaxRepsHit = lastReps.every(r => r >= repMax);
-    if (allMaxRepsHit) {
-      return { weight: maxMovedWeight, reps: repMin, sets: targetSets, hint: "🩹 Reps bestätigt – nächste Stufe", isCalculated: true };
-    }
-    const minReps = Math.min(...lastReps);
-    return {
-      weight: maxMovedWeight,
-      reps: Math.min(minReps + 1, repMax),
-      sets: targetSets,
-      hint: "🩹 Reps steigern",
-      isCalculated: true,
-    };
+    if (!hasHistory) return { weight: minWeight, reps: repMin, sets: targetSets, hint: "🩹 Neu", isCalculated: true };
+    const last = parsed[0];
+    if (last.minReps >= repMax) return { weight: last.maxWeight, reps: repMin, sets: targetSets, hint: "🩹 Reps bestätigt – nächste Stufe", isCalculated: true };
+    return { weight: last.maxWeight, reps: Math.min(last.minReps + 1, repMax), sets: targetSets, hint: "🩹 Reps steigern", isCalculated: true };
   }
 
   // ── ISOMETRIC ────────────────────────────────────────────────────────────
   if (progressionType === 'isometric') {
-    if (!lastLogEntry) {
-      return { weight: minWeight, reps: repMin, sets: targetSets, hint: "🧘 Neu", isCalculated: true };
+    if (!hasHistory) return { weight: '', reps: repMin, sets: targetSets, hint: "🧘 Neu", isCalculated: true };
+    const last = parsed[0];
+    const atMax = last.minReps >= repMax;
+    return {
+      weight: '',
+      reps: atMax ? repMax : Math.min(last.minReps + 1, repMax),
+      sets: targetSets,
+      hint: atMax ? "🧘 Ziel gehalten" : "🧘 Haltezeit steigern",
+      isCalculated: true
+    };
+  }
+
+  // ── HYPERTROPHY ──────────────────────────────────────────────────────────
+  if (!hasHistory) {
+    return { weight: sorted ? minWeight : 0, reps: repMin, sets: targetSets, hint: "Neu", isCalculated: true };
+  }
+
+  // Deload: letzte Session liegt >28 Tage zurück und wenig Daten
+  if (parsed[0].date && entries.length < 3) {
+    const daysSince = (Date.now() - new Date(parsed[0].date).getTime()) / 86400000;
+    if (daysSince > 28) {
+      const deloadW = sorted ? getNearestWeight(parsed[0].maxWeight * 0.95, sorted) : parsed[0].maxWeight;
+      return { weight: deloadW, reps: repMin, sets: targetSets, hint: "🔄 Deload nach Pause", isCalculated: true };
     }
-    const lastReps = parseReps(lastLogEntry.reps);
-    const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
-    const maxMovedWeight = Math.max(...lastWeights);
-    const minReps = Math.min(...lastReps);
-    return {
-      weight: maxMovedWeight,
-      reps: Math.min(minReps + 1, repMax),
-      sets: targetSets,
-      hint: "🧘 Haltezeit steigern",
-      isCalculated: true,
-    };
   }
 
-  // ── HYPERTROPHY (default) ────────────────────────────────────────────────
-  if (!lastLogEntry) {
-    return {
-      weight: sorted ? minWeight : 0,
-      reps: repMin,
-      sets: targetSets,
-      hint: "Neu",
-      isCalculated: true,
-    };
+  // Referenzgewicht: höchstes Gewicht, bei dem minReps ≥ repMin (valide Session)
+  const validSessions = parsed.filter(p => p.minReps >= repMin);
+  const refWeight = validSessions.length > 0
+    ? Math.max(...validSessions.map(p => p.maxWeight))
+    : parsed[0].maxWeight;
+
+  // Konsistenz-Check: In den letzten 3 Sessions bei refWeight – wie oft repMax erreicht?
+  const recentAtRef  = parsed.slice(0, 3).filter(p => p.maxWeight === refWeight);
+  const repMaxHits   = recentAtRef.filter(p => p.minReps >= repMax).length;
+  const repMaxConsistent = recentAtRef.length > 0 && repMaxHits >= Math.ceil(recentAtRef.length / 2);
+
+  // RPE: nur nutzen wenn Mehrheit der Einträge getrackt (>0)
+  const rpeValues = parsed.map(p => p.rpe).filter(r => r > 0);
+  const useRPE    = rpeValues.length >= Math.ceil(parsed.length / 2);
+  const avgRPE    = useRPE ? rpeValues.reduce((a, b) => a + b, 0) / rpeValues.length : null;
+
+  if (repMaxConsistent) {
+    if (!useRPE || avgRPE < rpeZielMax) {
+      const nextW = getNextWeight(refWeight, availableWeights);
+      const hint  = useRPE ? `↑ Steigerung (Ø RPE ${avgRPE.toFixed(1)})` : "↑ Steigerung";
+      return { weight: nextW, reps: repMin, sets: targetSets, hint, isCalculated: true };
+    }
+    return { weight: refWeight, reps: repMax, sets: targetSets, hint: `⚖️ Halten (Ø RPE ${avgRPE.toFixed(1)})`, isCalculated: true };
   }
 
-  const lastReps = parseReps(lastLogEntry.reps);
-  const lastWeights = parseWeights(lastLogEntry.weight, targetSets);
-  const lastRPE = parseFloat(lastLogEntry.rpe || 0);
-  const maxMovedWeight = Math.max(...lastWeights);
-  const minMovedReps = Math.min(...lastReps);
-  const isWeightUniform = lastWeights.every(w => w === maxMovedWeight) && lastWeights.length >= targetSets;
-  const allMaxRepsHit = lastReps.every(r => r >= repMax);
-
-  let result = { weight: maxMovedWeight, reps: repMin, sets: targetSets, hint: "", isCalculated: true };
-
-  if (isWeightUniform && allMaxRepsHit && lastRPE < rpeZielMax) {
-    result.weight = getNextWeight(maxMovedWeight, availableWeights);
-    result.hint = lastRPE > 0 && lastRPE < rpeZielMin ? "↑ Steigerung (Easy!)" : "↑ Steigerung";
-  } else if (isWeightUniform && allMaxRepsHit && lastRPE >= rpeZielMax) {
-    result.weight = maxMovedWeight;
-    result.reps = repMax;
-    result.hint = `⚖️ Halten (RPE ${lastRPE})`;
-  } else if (!isWeightUniform) {
-    const index = lastWeights.indexOf(maxMovedWeight);
-    result.reps = lastReps[index] || repMin;
-    result.hint = "⚖️ Konsolidieren";
-  } else {
-    result.reps = Math.min(minMovedReps + 1, repMax);
-    result.hint = "📈 Reps steigern";
-  }
-
-  return result;
+  // Reps noch nicht konsistent bei repMax → 1 Rep steigern
+  return { weight: refWeight, reps: Math.min(parsed[0].minReps + 1, repMax), sets: targetSets, hint: "📈 Reps steigern", isCalculated: true };
 };

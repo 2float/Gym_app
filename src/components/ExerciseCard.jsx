@@ -17,6 +17,11 @@ const stepWeight = (current, availableWeights, direction) => {
 
 const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isExpanded, onToggleExpand }) => {
 
+  const isTimeBased = exercise.progressionType === 'isometric';
+  // Gewichtsfeld ausblenden wenn keine Gewichte verfügbar sind (bodyweight-only)
+  // Ausnahme: hypertrophy startet oft bei 0kg und bekommt später Gewicht (z.B. Dips)
+  const hideWeight = isTimeBased || (!exercise.availableWeights?.length && exercise.progressionType !== 'hypertrophy');
+
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
     const updatedSets = exercise.sets.map((s, i) => 
@@ -65,14 +70,19 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
     const completed = exercise.sets.filter(s => s.completed);
     if (completed.length === 0) return null;
 
-    // Prüfe ob alle Sätze identisch sind
     const first = completed[0];
-    const allSame = completed.every(s => s.weight === first.weight && s.reps === first.reps);
 
+    if (isTimeBased) {
+      const allSame = completed.every(s => s.reps === first.reps);
+      if (allSame) return `${first.reps} Sek.`;
+      const longest = completed.reduce((max, set) => (parseInt(set.reps) || 0) > (parseInt(max.reps) || 0) ? set : max);
+      return `top: ${longest.reps} Sek.`;
+    }
+
+    const allSame = completed.every(s => s.weight === first.weight && s.reps === first.reps);
     if (allSame) {
       return `all: ${first.weight}kg x ${first.reps}`;
     } else {
-      // Finde schwersten Satz, bei Gleichstand den mit wenigsten Reps
       const heaviest = completed.reduce((max, set) => {
         const maxWeight = parseFloat(max.weight) || 0;
         const setWeight = parseFloat(set.weight) || 0;
@@ -119,6 +129,12 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
                       RPE {exercise.rpe}
                     </span>
                   )}
+                  {/* Normal-Badge wenn explosive Übung auf Normal gesetzt */}
+                  {exercise.progressionType === 'explosive' && exercise.execution === 'normal' && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                      Normal
+                    </span>
+                  )}
                 </>
               )}
               <svg 
@@ -157,7 +173,7 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
                   </span>
                 )}
 
-                {exercise.equipment_names && (
+                {exercise.equipment_names && !isTimeBased && (
                     <span className="text-xs text-gray-600 dark:text-gray-500 bg-gray-100 dark:bg-gray-200 px-2 py-0.5 rounded-full">
                         🏗️ {exercise.equipment_names.join(" oder ")}
                     </span>
@@ -165,9 +181,12 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
               </div>
             )}
              
-             {isExpanded && exercise.targetDetails?.lastWeight && exercise.targetDetails.lastWeight !== "-" && (
+             {isExpanded && exercise.targetDetails?.lastReps && exercise.targetDetails.lastReps !== "-" && (
                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Last: {exercise.targetDetails.lastWeight}kg x {exercise.targetDetails.lastReps}
+                   {isTimeBased
+                     ? `Last: ${exercise.targetDetails.lastReps} Sek.`
+                     : `Last: ${exercise.targetDetails.lastWeight}kg x ${exercise.targetDetails.lastReps}`
+                   }
                  </div>
              )}
           </div>
@@ -216,19 +235,48 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
 
       {isExpanded && (
       <div className="p-4 space-y-3">
-        <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 text-xs text-gray-600 dark:text-gray-400 uppercase font-semibold text-center mb-1">
+
+        {/* Execution Toggle — nur für explosive Übungen */}
+        {exercise.progressionType === 'explosive' && (
+          <div className="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-700">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Ausführung:</span>
+            <button
+              onClick={() => onUpdate({ ...exercise, execution: 'explosive' })}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                (exercise.execution ?? 'explosive') === 'explosive'
+                  ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-600 shadow-sm'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              ⚡ Explosiv
+            </button>
+            <button
+              onClick={() => onUpdate({ ...exercise, execution: 'normal' })}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                (exercise.execution ?? 'explosive') === 'normal'
+                  ? 'bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 border border-gray-400 dark:border-gray-500 shadow-sm'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              Normal
+            </button>
+          </div>
+        )}
+
+        <div className={`grid ${hideWeight ? 'grid-cols-[auto_1fr_auto_auto]' : 'grid-cols-[auto_1fr_1fr_auto_auto]'} gap-2 text-xs text-gray-600 dark:text-gray-400 uppercase font-semibold text-center mb-1`}>
           <div>#</div>
-          <div>kg</div>
-          <div>Reps</div>
+          {!hideWeight && <div>kg</div>}
+          <div>{isTimeBased ? 'Sek.' : 'Reps'}</div>
           <div></div>
           <div></div>
         </div>
 
         {exercise.sets.map((set, i) => (
-          <div key={i} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center transition-opacity ${set.completed ? 'opacity-50' : ''}`}>
+          <div key={i} className={`grid ${hideWeight ? 'grid-cols-[auto_1fr_auto_auto]' : 'grid-cols-[auto_1fr_1fr_auto_auto]'} gap-2 items-center transition-opacity ${set.completed ? 'opacity-50' : ''}`}>
             <div className="text-center font-bold text-gray-600 dark:text-gray-400">{i + 1}</div>
-            
-            {/* Gewicht Gruppe */}
+
+            {/* Gewicht Gruppe — nur für gewichtsbasierte Übungen */}
+            {!hideWeight && (
             <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 max-w-[140px]">
               <button
                 type="button"
@@ -261,8 +309,9 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
                 +
               </button>
             </div>
-            
-            {/* Reps Gruppe */}
+            )}
+
+            {/* Reps / Sek. Gruppe */}
             <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 max-w-[120px]">
               <button
                 type="button"
@@ -276,11 +325,11 @@ const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isEx
               >
                 −
               </button>
-              <input 
+              <input
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                placeholder="Reps"
+                placeholder={isTimeBased ? 'Sek.' : 'Reps'}
                 value={set.reps}
                 onChange={(e) => handleSetUpdate(i, 'reps', e.target.value)}
                 className={`flex-1 min-w-0 p-1.5 text-center border rounded focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm text-gray-900 dark:text-gray-100
