@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../db';
 import { supabase } from '../supabaseClient';
 import useOnlineStatus from '../hooks/useOnlineStatus';
@@ -12,17 +12,22 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
   const { user } = useAuth();
   const [workoutName, setWorkoutName] = useState(initialData?.routineName || "Freies Training");
   const [startTime] = useState(new Date());
-  
+
   // Haupt-State: Die Liste der Übungen
   const [exercises, setExercises] = useState(initialData?.exercises || []);
-  
+
   // UI State
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [savingPhase, setSavingPhase] = useState(null); // 'local' | 'cloud'
+  const skipSyncRef = useRef(false);
+  const mountedRef = useRef(true);
   const [expandedExerciseIndex, setExpandedExerciseIndex] = useState(0); // Erste Übung ist standardmäßig offen
-  
+
   const isOnline = useOnlineStatus();
   const { refreshHistory } = useApp();
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // Scroll to top
   useEffect(() => {
@@ -141,119 +146,120 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
     }
 
     setIsFinishing(true);
+    skipSyncRef.current = false;
+    setSavingPhase('local');
     const endTime = new Date();
     const durationMs = endTime - startTime;
 
     // 2. DATEN AUFBEREITEN
-    // Filtere Übungen: Nur solche, wo mindestens 1 Satz completed ist
     const validExercises = exercises
         .map(ex => ({
             ...ex,
-            sets: ex.sets.filter(s => s.completed) // Nur erledigte Sätze
+            sets: ex.sets.filter(s => s.completed)
         }))
-        .filter(ex => ex.sets.length > 0); // Nur Übungen mit Sätzen
+        .filter(ex => ex.sets.length > 0);
 
     if (validExercises.length === 0) {
         alert("Keine Sätze abgeschlossen. Training wird nicht gespeichert.");
         setIsFinishing(false);
+        setSavingPhase(null);
         return;
     }
 
-    // Basis-Objekt für Dexie (verwendet camelCase wie im Frontend gewohnt)
     const logEntryLocal = {
-      date: endTime.toISOString(), // Vollständiger Timestamp statt nur Datum
-      workoutName, 
+      date: endTime.toISOString(),
+      workoutName,
       duration_ms: durationMs,
       exercises: validExercises.map(ex => ({
         name: ex.name,
         sets: ex.sets.length,
-        reps: ex.sets.map(s => s.reps).join(';'), 
+        reps: ex.sets.map(s => s.reps).join(';'),
         weight: ex.sets.map(s => s.weight).join(';'),
-        rpe: ex.rpe || "", 
-        note: ex.note || "" 
+        rpe: ex.rpe || "",
+        note: ex.note || "",
+        execution: ex.execution || 'normal'
       })),
       synced: false
     };
 
+    let localId;
     try {
-      // 3. DEXIE SAVE (Lokal)
-      const id = await db.workout_logs.add(logEntryLocal);
-      console.log("✅ Locally saved ID:", id);
+      // 3. DEXIE SAVE (Lokal) — instant
+      localId = await db.workout_logs.add(logEntryLocal);
+      console.log("✅ Locally saved ID:", localId);
+    } catch (err) {
+      console.error("Local save failed:", err);
+      alert("Fehler beim lokalen Speichern! Bitte Screenshot machen.");
+      setIsFinishing(false);
+      setSavingPhase(null);
+      return;
+    }
 
-      // 4. CLOUD SYNC (Best Effort mit Timeout)
-      if (isOnline) {
-        // Lokale Zeit als "naive UTC" speichern (wie beim Import)
-        const localTime = new Date(endTime);
-        const year = localTime.getFullYear();
-        const month = String(localTime.getMonth() + 1).padStart(2, '0');
-        const day = String(localTime.getDate()).padStart(2, '0');
-        const hours = String(localTime.getHours()).padStart(2, '0');
-        const minutes = String(localTime.getMinutes()).padStart(2, '0');
-        const seconds = String(localTime.getSeconds()).padStart(2, '0');
-        const naiveTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
-        
-        // MAPPING FÜR SUPABASE: camelCase -> snake_case
-        const supabasePayload = {
-            date: naiveTimestamp, // Lokale Zeit als UTC (naive timestamp)
-            workout_name: logEntryLocal.workoutName,
-            duration_ms: logEntryLocal.duration_ms,
-            exercises: logEntryLocal.exercises,
-            user_id: user.id // Wichtig: User ID für RLS
-            // created_at wird weiterhin automatisch gesetzt
-            // KEIN 'synced' Feld an Supabase senden
-            // KEIN 'id' senden (Supabase generiert eigene UUID/Int)
-        };
+    // 4. CLOUD SYNC — User kann jederzeit überspringen
+    setSavingPhase('cloud');
 
-        try {
-          // 🔍 Deduplizierung: Prüfe ob Workout bereits existiert (gleicher Timestamp auf Minute, Name, User)
-          const dateMinute = naiveTimestamp.substring(0, 16); // YYYY-MM-DDTHH:MM
-          const { data: existing } = await supabase
-            .from('workout_logs')
-            .select('id')
+    if (isOnline && !skipSyncRef.current) {
+      const localTime = new Date(endTime);
+      const pad = n => String(n).padStart(2, '0');
+      const naiveTimestamp = `${localTime.getFullYear()}-${pad(localTime.getMonth()+1)}-${pad(localTime.getDate())}T${pad(localTime.getHours())}:${pad(localTime.getMinutes())}:${pad(localTime.getSeconds())}Z`;
+
+      const supabasePayload = {
+        date: naiveTimestamp,
+        workout_name: logEntryLocal.workoutName,
+        duration_ms: logEntryLocal.duration_ms,
+        exercises: logEntryLocal.exercises,
+        user_id: user.id
+      };
+
+      try {
+        const withTimeout = (promise, ms) => Promise.race([
+          promise,
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+        ]);
+
+        // Deduplizierung (max 5s)
+        const dateMinute = naiveTimestamp.substring(0, 16);
+        const { data: existing } = await withTimeout(
+          supabase.from('workout_logs').select('id')
             .eq('user_id', user.id)
             .eq('workout_name', supabasePayload.workout_name)
             .gte('date', `${dateMinute}:00Z`)
             .lt('date', `${dateMinute}:59Z`)
-            .limit(1);
+            .limit(1),
+          5000
+        );
 
-          if (existing && existing.length > 0) {
-            console.log(`⏭️ Workout "${supabasePayload.workout_name}" bereits in Supabase (skip duplicate)`);
-            await db.workout_logs.update(id, { synced: true });
-            return;
-          }
-
-          // Timeout: Max 5 Sekunden warten, dann aufgeben
-          const syncPromise = supabase.from('workout_logs').insert([supabasePayload]);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Cloud sync timeout')), 5000)
+        if (existing && existing.length > 0) {
+          console.log(`⏭️ Duplicate in Supabase, skip insert`);
+          await db.workout_logs.update(localId, { synced: true });
+        } else if (!skipSyncRef.current) {
+          // Insert (max 5s)
+          const { error } = await withTimeout(
+            supabase.from('workout_logs').insert([supabasePayload]),
+            5000
           );
-
-          const { error } = await Promise.race([syncPromise, timeoutPromise]);
-          
           if (!error) {
-            await db.workout_logs.update(id, { synced: true });
+            await db.workout_logs.update(localId, { synced: true });
             console.log("☁️ Synced to Supabase!");
           } else {
-              console.error("❌ Supabase Upload Error:", error);
+            console.error("❌ Supabase Upload Error:", error);
           }
-        } catch (syncErr) {
-          console.warn("⚠️ Cloud sync übersprungen (offline/timeout):", syncErr.message);
-          // Lokal gespeichert, wird beim nächsten Sync nachgeholt
         }
-      } else {
-        console.log("📴 Offline - Workout lokal gespeichert, wird beim nächsten Sync hochgeladen");
+      } catch (syncErr) {
+        console.warn("⚠️ Cloud sync übersprungen (offline/timeout):", syncErr.message);
       }
-    } catch (err) {
-      console.error("Save failed:", err);
-      alert("Fehler beim Speichern! Bitte Screenshot machen.");
     }
 
-    // Refresh history in context so dashboard shows new workout
-    await refreshHistory();
+    // Abgebrochen via "Sync überspringen" — onFinish wurde bereits aufgerufen
+    if (!mountedRef.current) return;
 
-    setTimeout(() => {
-      onFinish();
-    }, 1000);
+    await refreshHistory();
+    onFinish();
+  };
+
+  const handleSkipSync = () => {
+    skipSyncRef.current = true;
+    onFinish(); // sofort zurück, Sync läuft ggf. noch kurz im Hintergrund
   };
 
   // Workout abbrechen
@@ -267,9 +273,24 @@ const ActiveWorkout = ({ onFinish, initialData }) => {
 
   if (isFinishing) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Speichere Gains...</h2>
+      <div className="flex flex-col items-center justify-center h-64 space-y-4 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
+        {savingPhase === 'local' && (
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Speichere Gains...</h2>
+        )}
+        {savingPhase === 'cloud' && (
+          <>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Synchronisiere mit Cloud...</h2>
+            <p className="text-sm text-green-600 dark:text-green-400 font-medium">Training lokal gespeichert ✓</p>
+            <button
+              onClick={handleSkipSync}
+              className="mt-2 px-5 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              Sync überspringen →
+            </button>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Wird beim nächsten Sync nachgeholt</p>
+          </>
+        )}
       </div>
     );
   }

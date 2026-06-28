@@ -13,45 +13,19 @@ export const workoutLogic = {
    * @returns {String} Name der nächsten Routine
    */
   determineNextRoutine(recentLogs, availableRoutines) {
-    if (!availableRoutines || availableRoutines.length === 0) {
-      return null;
-    }
+    if (!availableRoutines || availableRoutines.length === 0) return null;
 
-    // 1. Extrahiere die Namen der letzten Workouts
-    const uniqueWorkouts = [];
+    // Letzten Log finden der zu einer bekannten Routine gehört → nächste in der Sequenz
     for (const log of recentLogs) {
-      // Compat: Supabase liefert snake_case, Dexie camelCase. Wir prüfen beides.
       const name = log.workoutName || log.workout_name;
-      if (name && !uniqueWorkouts.includes(name)) {
-        uniqueWorkouts.push(name);
-      }
-      if (uniqueWorkouts.length === 2) break; // Wir schauen nur die letzten 2 verschiedenen an
-    }
-
-    // 2. Entscheidungslogik
-    if (uniqueWorkouts.length === 0) {
-      // Case A: Keine History -> Erste Routine
-      return availableRoutines[0].name;
-    } 
-    
-    if (uniqueWorkouts.length === 1) {
-      // Case B: Nur 1 Typ in History -> Nächstes in der Liste
-      const lastRoutineName = uniqueWorkouts[0];
-      const currentIndex = availableRoutines.findIndex(r => r.name === lastRoutineName);
-      
-      if (currentIndex >= 0 && currentIndex < availableRoutines.length - 1) {
-        return availableRoutines[currentIndex + 1].name;
-      } else {
-        return availableRoutines[0].name; // Wrap around (Start von vorne)
+      const idx = availableRoutines.findIndex(r => r.name === name);
+      if (idx >= 0) {
+        return availableRoutines[(idx + 1) % availableRoutines.length].name;
       }
     }
 
-    // Case C: 2+ verschiedene Workouts -> Finde die Lücke (Rotation)
-    // Beispiel: Routinen A, B, C. History: B, A. -> Next: C.
-    const routineNames = availableRoutines.map(r => r.name);
-    const missing = routineNames.find(name => !uniqueWorkouts.includes(name));
-    
-    return missing || availableRoutines[0].name; // Fallback
+    // Keine passende History → von vorne beginnen
+    return availableRoutines[0].name;
   },
 
   /**
@@ -85,15 +59,13 @@ export const workoutLogic = {
         weightOffsetPct: exerciseProgressionType === 'explosive' ? routineConfig.weightOffsetPct : 0,
       };
 
-      // A. Letzten Log für diese spezifische Übung finden
-      let lastLogEntry = null;
+      // A. Letzte 5 Logs für diese Übung sammeln (über alle Sessions)
+      const recentEntries = [];
       for (const log of recentLogs) {
+        if (recentEntries.length >= 5) break;
         if (log.exercises && Array.isArray(log.exercises)) {
           const found = log.exercises.find(e => e.name === exercise.name);
-          if (found) {
-            lastLogEntry = found;
-            break;
-          }
+          if (found) recentEntries.push({ ...found, date: log.date || log.created_at });
         }
       }
 
@@ -116,7 +88,7 @@ export const workoutLogic = {
       };
 
       // D. Progression berechnen
-      const calculation = calculateTarget(exerciseDef, lastLogEntry, availableWeights, exerciseConfig);
+      const calculation = calculateTarget(exerciseDef, recentEntries, availableWeights, exerciseConfig);
 
       return {
         id: exercise.id,
@@ -124,6 +96,7 @@ export const workoutLogic = {
         equipment_names: exercise.equipment_names,
         availableWeights,
         progressionType: exerciseProgressionType,
+        execution: exerciseProgressionType === 'explosive' ? 'explosive' : 'normal',
         sets: Array(calculation.sets).fill({
           weight: calculation.weight,
           reps: calculation.reps,
@@ -131,8 +104,8 @@ export const workoutLogic = {
         }),
         targetDetails: {
           ...calculation,
-          lastWeight: lastLogEntry ? lastLogEntry.weight : "-",
-          lastReps: lastLogEntry ? lastLogEntry.reps : "-"
+          lastWeight: recentEntries[0]?.weight ?? "-",
+          lastReps: recentEntries[0]?.reps ?? "-"
         }
       };
     });

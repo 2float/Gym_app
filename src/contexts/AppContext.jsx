@@ -6,18 +6,15 @@ import { useAuth } from './AuthContext';
 
 const AppContext = createContext();
 
-/**
- * Pusht alle lokal gespeicherten, noch nicht synchronisierten Workout-Logs nach Supabase.
- * Muss VOR dem Cloud→Local-Sync aufgerufen werden, damit keine Daten verloren gehen.
- */
-async function pushUnsyncedLogs(userId) {
-  try {
-    const unsyncedLogs = await db.workout_logs
-      .where('synced')
-      .equals(0) // Dexie speichert false als 0
-      .toArray();
+let _syncInProgress = false;
 
-    // Fallback: auch Einträge ohne synced-Feld oder mit explizit false
+async function pushUnsyncedLogs(userId) {
+  if (_syncInProgress) {
+    console.log('📤 Sync bereits aktiv, übersprungen.');
+    return 0;
+  }
+  _syncInProgress = true;
+  try {
     const allLogs = await db.workout_logs.toArray();
     const logsToSync = allLogs.filter(log => !log.synced);
 
@@ -27,7 +24,6 @@ async function pushUnsyncedLogs(userId) {
 
     let syncedCount = 0;
     for (const log of logsToSync) {
-      // Timestamp für Supabase aufbereiten (lokale Zeit als naive UTC)
       const localTime = new Date(log.date);
       const year = localTime.getFullYear();
       const month = String(localTime.getMonth() + 1).padStart(2, '0');
@@ -45,8 +41,7 @@ async function pushUnsyncedLogs(userId) {
         user_id: userId
       };
 
-      // 🔍 Deduplizierung: Prüfe ob Workout bereits existiert (gleicher Timestamp auf Minute, Name, User)
-      const dateMinute = naiveTimestamp.substring(0, 16); // YYYY-MM-DDTHH:MM
+      const dateMinute = naiveTimestamp.substring(0, 16);
       const { data: existing } = await supabase
         .from('workout_logs')
         .select('id')
@@ -79,6 +74,8 @@ async function pushUnsyncedLogs(userId) {
   } catch (err) {
     console.error('❌ pushUnsyncedLogs fehlgeschlagen:', err);
     return 0;
+  } finally {
+    _syncInProgress = false;
   }
 }
 

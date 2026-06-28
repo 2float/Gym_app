@@ -6,7 +6,8 @@ export default function useOnlineStatus() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   useEffect(() => {
-    // Der "echte" Check: Ein minimaler Ping an Supabase
+    let debounceTimer = null;
+
     const checkConnection = async () => {
       if (!navigator.onLine) {
         setIsOnline(false);
@@ -14,46 +15,45 @@ export default function useOnlineStatus() {
       }
 
       try {
-        // 'head: true' = Nur Header laden, extrem schnell & datensparsam
         const { error } = await supabase.from('workout_logs').select('id', { count: 'exact', head: true });
-        
-        // Hinweis: Ich habe hier 'workout_logs' statt 'workout_sessions' genommen, 
-        // da wir die Tabelle 'workout_sessions' eventuell gar nicht mehr nutzen/haben.
-        // 'workout_logs' existiert sicher durch unseren Import.
-        
-        // Wenn kein Netzwerk-Fehler kommt, sind wir online
-        if (!error || error.code !== 'PGRST000') { 
-            setIsOnline(true);
+        if (!error || error.code !== 'PGRST000') {
+          setIsOnline(true);
         }
       } catch (err) {
-        // Echter Netzwerkfehler -> Offline
         setIsOnline(false);
       }
     };
 
+    // Debounce: mehrere schnelle Events (online + focus + visibilitychange)
+    // werden zu einem einzigen Check zusammengefasst.
+    const debouncedCheck = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(checkConnection, 300);
+    };
+
     const updateStatus = () => {
       if (!navigator.onLine) {
-        setIsOnline(false); // Sofort Offline schalten
+        setIsOnline(false);
       } else {
-        checkConnection(); // Bei Online erst prüfen
+        debouncedCheck();
       }
     };
 
     window.addEventListener('online', updateStatus);
     window.addEventListener('offline', updateStatus);
-    window.addEventListener('focus', checkConnection); 
+    window.addEventListener('focus', debouncedCheck);
     window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') checkConnection();
+      if (document.visibilityState === 'visible') debouncedCheck();
     });
 
-    // Initialer Check
     checkConnection();
 
     return () => {
+      clearTimeout(debounceTimer);
       window.removeEventListener('online', updateStatus);
       window.removeEventListener('offline', updateStatus);
-      window.removeEventListener('focus', checkConnection);
-      window.removeEventListener('visibilitychange', checkConnection);
+      window.removeEventListener('focus', debouncedCheck);
+      window.removeEventListener('visibilitychange', debouncedCheck);
     };
   }, []);
 
