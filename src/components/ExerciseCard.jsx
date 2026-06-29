@@ -18,9 +18,9 @@ const stepWeight = (current, availableWeights, direction) => {
 const ExerciseCard = ({ exercise, onUpdate, onDelete, onMoveUp, onMoveDown, isExpanded, onToggleExpand }) => {
 
   const isTimeBased = exercise.progressionType === 'isometric';
-  // Gewichtsfeld ausblenden wenn keine Gewichte verfügbar sind (bodyweight-only)
-  // Ausnahme: hypertrophy startet oft bei 0kg und bekommt später Gewicht (z.B. Dips)
-  const hideWeight = isTimeBased || (!exercise.availableWeights?.length && exercise.progressionType !== 'hypertrophy');
+  // Gewichtsfeld unabhängig von isTimeBased — "in Sekunden messen" ≠ "kein Gewicht"
+  // Ausnahme: hypertrophy startet oft bei 0kg (z.B. Dips)
+  const hideWeight = !exercise.availableWeights?.length && exercise.progressionType !== 'hypertrophy';
 
   // Hilfsfunktion: Aktualisiert einen spezifischen Satz
   const handleSetUpdate = (setIndex, field, value) => {
