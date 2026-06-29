@@ -125,11 +125,11 @@ export const calculateTarget = (exerciseDef, recentEntries, availableWeights, co
 
   // ── ISOMETRIC ────────────────────────────────────────────────────────────
   if (progressionType === 'isometric') {
-    if (!hasHistory) return { weight: '', reps: repMin, sets: targetSets, hint: "🧘 Neu", isCalculated: true };
+    if (!hasHistory) return { weight: sorted ? minWeight : '', reps: repMin, sets: targetSets, hint: "🧘 Neu", isCalculated: true };
     const last = parsed[0];
     const atMax = last.minReps >= repMax;
     return {
-      weight: '',
+      weight: last.maxWeight || (sorted ? minWeight : ''),
       reps: atMax ? repMax : Math.min(last.minReps + 1, repMax),
       sets: targetSets,
       hint: atMax ? "🧘 Ziel gehalten" : "🧘 Haltezeit steigern",
