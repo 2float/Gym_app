@@ -8,6 +8,7 @@ import { useTheme } from './contexts/ThemeContext';
 
 // Lazy-loaded Views
 const Home = lazy(() => import('./views/Home'));
+const LogActivity = lazy(() => import('./views/LogActivity'));
 const Templates = lazy(() => import('./views/Templates'));
 const Programs = lazy(() => import('./views/Programs'));
 const Exercises = lazy(() => import('./views/Exercises'));
@@ -200,7 +201,18 @@ function App() {
               </svg>
             </div>
           }>
-            {currentView === 'home' && <Home onStartWorkout={handleStartWorkout} />}
+            {currentView === 'home' && (
+              <Home
+                onStartWorkout={handleStartWorkout}
+                onLogActivity={() => setCurrentView('logActivity')}
+              />
+            )}
+            {currentView === 'logActivity' && (
+              <LogActivity
+                onSaved={() => setCurrentView('home')}
+                onCancel={() => setCurrentView('home')}
+              />
+            )}
             {currentView === 'templates' && <Templates />}
             {currentView === 'programs' && <Programs />}
             {currentView === 'exercises' && <Exercises />}

@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { getSportIcon } from '../constants/activitySports';
+
+const GYM_ICON = '💪';
 
 const ROUTINE_PALETTE = [
   ['bg-blue-400 dark:bg-blue-500',   'bg-blue-400/20 dark:bg-blue-500/20',   'text-blue-700 dark:text-blue-300'],
@@ -23,35 +26,55 @@ const daysSince = (dateStr) => {
 };
 
 export default function History() {
-  const { history } = useApp();
+  const { history, activityHistory } = useApp();
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
   // ── 30-DAY CALENDAR ───────────────────────────────────────────────────────
   const calendarData = useMemo(() => {
     const trainedDates = new Set(history.map(log => toUTCDateStr(log.date)));
+    const activityBySDate = new Map();
+    // Älteste zuerst einlesen, damit bei mehreren Aktivitäten am selben Tag
+    // konsistent die zuerst geloggte Sportart als Icon gezeigt wird.
+    [...activityHistory].reverse().forEach(a => {
+      const str = toUTCDateStr(a.date);
+      if (!activityBySDate.has(str)) activityBySDate.set(str, a.sport_type);
+    });
     const todayStr = toUTCDateStr(new Date());
     return Array.from({ length: 30 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (29 - i));
       const str = toUTCDateStr(d);
-      return { day: d.getDate(), str, trained: trainedDates.has(str), isToday: str === todayStr };
+      const trained = trainedDates.has(str);
+      const activitySportType = activityBySDate.get(str) ?? null;
+      // Gym-Icon hat Vorrang, falls an einem Tag beides stattfand
+      const icon = trained ? GYM_ICON : (activitySportType ? getSportIcon(activitySportType) : null);
+      return { day: d.getDate(), str, trained, hasActivity: !!activitySportType, icon, isToday: str === todayStr };
     });
-  }, [history]);
+  }, [history, activityHistory]);
 
-  const activeDays = calendarData.filter(d => d.trained).length;
+  const activeDays = calendarData.filter(d => d.trained || d.hasActivity).length;
 
   // ── STREAK ────────────────────────────────────────────────────────────────
   const currentStreak = useMemo(() => {
     const trainedDates = new Set(history.map(log => toUTCDateStr(log.date)));
+    const activityDates = new Set(activityHistory.map(a => toUTCDateStr(a.date)));
     let streak = 0;
     for (let i = 0; i < 60; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      if (trainedDates.has(toUTCDateStr(d))) streak++;
+      const str = toUTCDateStr(d);
+      if (trainedDates.has(str) || activityDates.has(str)) streak++;
       else if (i > 0) break;
     }
     return streak;
-  }, [history]);
+  }, [history, activityHistory]);
+
+  // ── GEMISCHTE TIMELINE (Gym + andere Sportarten) ──────────────────────────
+  const mergedTimeline = useMemo(() => {
+    const gymEntries = history.map(log => ({ kind: 'gym', ...log }));
+    const activityEntries = activityHistory.map(a => ({ kind: 'activity', ...a }));
+    return [...gymEntries, ...activityEntries].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [history, activityHistory]);
 
   // ── LETZTE RUNDE ──────────────────────────────────────────────────────────
   const lastRound = useMemo(() => {
@@ -137,7 +160,7 @@ export default function History() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Workout History</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-full font-semibold">
-            {history.length} gesamt
+            {mergedTimeline.length} gesamt
           </span>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -156,24 +179,27 @@ export default function History() {
         </div>
       </div>
 
-      {history.length > 0 && (
+      {(history.length > 0 || activityHistory.length > 0) && (
         <>
           {/* 30-DAY CALENDAR */}
           <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wide">Letzte 30 Tage</div>
-            <div className="grid grid-cols-10 gap-1.5">
+            <div className="grid grid-cols-6 gap-1.5">
               {calendarData.map((day, i) => (
                 <div
                   key={i}
                   title={day.str}
-                  className={`aspect-square rounded flex items-center justify-center text-xs font-semibold
+                  className={`aspect-[4/5] rounded flex flex-col items-center justify-center gap-0.5
                     ${day.trained
                       ? 'bg-green-400 dark:bg-green-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}
+                      : day.hasActivity
+                        ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}
                     ${day.isToday ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-800' : ''}
                   `}
                 >
-                  {day.day}
+                  <span className="text-xs font-semibold leading-none">{day.day}</span>
+                  {day.icon && <span className="text-sm leading-none">{day.icon}</span>}
                 </div>
               ))}
             </div>
@@ -285,7 +311,7 @@ export default function History() {
       )}
 
       {/* WORKOUT LOG */}
-      {history.length === 0 ? (
+      {mergedTimeline.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 p-12 rounded-xl shadow-sm text-center border-2 border-dashed border-gray-200 dark:border-gray-700">
           <div className="inline-block p-3 bg-gray-100 dark:bg-gray-700 rounded-full mb-3">
             <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -297,7 +323,38 @@ export default function History() {
         </div>
       ) : (
         <div className="space-y-3">
-          {history.map(log => {
+          {mergedTimeline.map(entry => {
+            if (entry.kind === 'activity') {
+              const activityDate = new Date(entry.date);
+              const dateStr = activityDate.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' });
+              const timeStr = activityDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+              return (
+                <div
+                  key={entry.id || entry.date}
+                  className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 border-l-4 border-l-teal-400 dark:border-l-teal-500"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl flex-shrink-0">{getSportIcon(entry.sport_type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-900 dark:text-gray-100">{entry.label}</span>
+                        {!entry.synced && (
+                          <span className="text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-medium">
+                            offline
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400 dark:text-gray-500">{dateStr} • {timeStr}</span>
+                      </div>
+                      {entry.note && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{entry.note}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const log = entry;
             const rpeValues = log.exercises
               ?.map(ex => parseFloat(ex.rpe))
               .filter(rpe => !isNaN(rpe) && rpe > 0) || [];

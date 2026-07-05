@@ -79,9 +79,83 @@ async function pushUnsyncedLogs(userId) {
   }
 }
 
+let _activitySyncInProgress = false;
+
+async function pushUnsyncedActivities(userId) {
+  if (_activitySyncInProgress) {
+    console.log('📤 Activity-Sync bereits aktiv, übersprungen.');
+    return 0;
+  }
+  _activitySyncInProgress = true;
+  try {
+    const allActivities = await db.activity_logs.toArray();
+    const activitiesToSync = allActivities.filter(a => !a.synced);
+
+    if (activitiesToSync.length === 0) return 0;
+
+    console.log(`📤 ${activitiesToSync.length} unsynced Activity-Log(s) gefunden, pushe nach Supabase...`);
+
+    let syncedCount = 0;
+    for (const activity of activitiesToSync) {
+      const localTime = new Date(activity.date);
+      const year = localTime.getFullYear();
+      const month = String(localTime.getMonth() + 1).padStart(2, '0');
+      const day = String(localTime.getDate()).padStart(2, '0');
+      const hours = String(localTime.getHours()).padStart(2, '0');
+      const minutes = String(localTime.getMinutes()).padStart(2, '0');
+      const seconds = String(localTime.getSeconds()).padStart(2, '0');
+      const naiveTimestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`;
+
+      const supabasePayload = {
+        date: naiveTimestamp,
+        sport_type: activity.sport_type,
+        label: activity.label,
+        note: activity.note || null,
+        user_id: userId
+      };
+
+      const dateMinute = naiveTimestamp.substring(0, 16);
+      const { data: existing } = await supabase
+        .from('activity_logs')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('sport_type', supabasePayload.sport_type)
+        .gte('date', `${dateMinute}:00Z`)
+        .lt('date', `${dateMinute}:59Z`)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        console.log(`  ⏭️ Activity "${supabasePayload.label}" bereits in Supabase (skip duplicate)`);
+        await db.activity_logs.update(activity.id, { synced: true });
+        syncedCount++;
+        continue;
+      }
+
+      const { error } = await supabase.from('activity_logs').insert([supabasePayload]);
+
+      if (!error) {
+        await db.activity_logs.update(activity.id, { synced: true });
+        syncedCount++;
+        console.log(`  ☁️ Activity "${supabasePayload.label}" (${activity.date}) nachträglich synchronisiert`);
+      } else {
+        console.error(`  ❌ Fehler beim Nachsync von "${supabasePayload.label}":`, error);
+      }
+    }
+
+    console.log(`📤 ${syncedCount}/${activitiesToSync.length} Activity-Logs erfolgreich nachsynchronisiert`);
+    return syncedCount;
+  } catch (err) {
+    console.error('❌ pushUnsyncedActivities fehlgeschlagen:', err);
+    return 0;
+  } finally {
+    _activitySyncInProgress = false;
+  }
+}
+
 export function AppProvider({ children }) {
   const { user } = useAuth(); // Get current user
   const [history, setHistory] = useState([]);
+  const [activityHistory, setActivityHistory] = useState([]);
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [isSyncingManually, setIsSyncingManually] = useState(false);
@@ -101,14 +175,17 @@ export function AppProvider({ children }) {
     
     const initData = async () => {
       let localLogs = await db.workout_logs.orderBy('date').reverse().toArray();
-      
+      let localActivities = await db.activity_logs.orderBy('date').reverse().toArray();
+
       // Nur syncen wenn online UND authenticated
       if (isOnline && user && !isCancelled) {
         // WICHTIG: Zuerst unsynced Logs hochladen, bevor Cloud→Local überschreibt
         await pushUnsyncedLogs(user.id);
+        await pushUnsyncedActivities(user.id);
 
         // Unsynced Logs sichern (falls Push fehlgeschlagen)
         const stillUnsynced = (await db.workout_logs.toArray()).filter(log => !log.synced);
+        const stillUnsyncedActivities = (await db.activity_logs.toArray()).filter(a => !a.synced);
 
         console.log("🔄 Lade aktuelle Daten aus der Cloud...");
         const { data: cloudLogs, error } = await supabase
@@ -139,6 +216,30 @@ export function AppProvider({ children }) {
           console.log(`📥 ${localLogs.length} Workout Logs synchronisiert!`);
         } else if (error) {
           console.warn("⚠️ Cloud-Sync fehlgeschlagen, nutze lokale Daten:", error.message);
+        }
+
+        const { data: cloudActivities, error: activitiesError } = await supabase
+          .from('activity_logs')
+          .select('id, sport_type, label, note, date')
+          .order('date', { ascending: false });
+
+        if (!activitiesError && cloudActivities && cloudActivities.length > 0 && !isCancelled) {
+          const mappedActivities = cloudActivities.map(a => ({ ...a, synced: true }));
+          await db.activity_logs.clear();
+          await db.activity_logs.bulkPut(mappedActivities);
+
+          if (stillUnsyncedActivities.length > 0) {
+            console.log(`🔒 ${stillUnsyncedActivities.length} unsynced Activity-Log(s) wiederherstellen...`);
+            for (const a of stillUnsyncedActivities) {
+              delete a.id;
+              await db.activity_logs.add(a);
+            }
+          }
+
+          localActivities = await db.activity_logs.orderBy('date').reverse().toArray();
+          console.log(`📥 ${localActivities.length} Activity Logs synchronisiert!`);
+        } else if (activitiesError) {
+          console.warn("⚠️ Activity-Cloud-Sync fehlgeschlagen, nutze lokale Daten:", activitiesError.message);
         }
 
         // Sync auch Referenzdaten (wie beim Manual Sync)
@@ -180,11 +281,12 @@ export function AppProvider({ children }) {
 
       if (!isCancelled) {
         setHistory(localLogs);
+        setActivityHistory(localActivities);
       }
     };
 
     initData();
-    
+
     return () => {
       isCancelled = true; // Cleanup: Verhindere State-Updates nach Unmount
     };
@@ -194,6 +296,12 @@ export function AppProvider({ children }) {
   const refreshHistory = async () => {
     const logs = await db.workout_logs.orderBy('date').reverse().toArray();
     setHistory(logs);
+  };
+
+  // Reload activity history after logging an activity
+  const refreshActivityHistory = async () => {
+    const activities = await db.activity_logs.orderBy('date').reverse().toArray();
+    setActivityHistory(activities);
   };
 
   // Manual sync function
@@ -206,14 +314,16 @@ export function AppProvider({ children }) {
     setIsSyncingManually(true);
     try {
       console.log('🔄 Manueller Sync gestartet...');
-      
+
       // WICHTIG: Zuerst unsynced Logs hochladen, bevor Cloud→Local überschreibt
       if (user) {
         await pushUnsyncedLogs(user.id);
+        await pushUnsyncedActivities(user.id);
       }
 
       // Unsynced Logs sichern (falls Push fehlgeschlagen)
       const stillUnsynced = (await db.workout_logs.toArray()).filter(log => !log.synced);
+      const stillUnsyncedActivities = (await db.activity_logs.toArray()).filter(a => !a.synced);
 
       // 1. Workout Logs von Cloud holen
       const { data: cloudLogs, error: logsError } = await supabase
@@ -241,6 +351,28 @@ export function AppProvider({ children }) {
         }
 
         console.log(`📥 ${cloudLogs.length} Workout Logs synchronisiert`);
+      }
+
+      // 1b. Activity Logs von Cloud holen
+      const { data: cloudActivities, error: activitiesError } = await supabase
+        .from('activity_logs')
+        .select('id, sport_type, label, note, date')
+        .order('date', { ascending: false });
+
+      if (!activitiesError && cloudActivities?.length > 0) {
+        await db.activity_logs.clear();
+        const mappedActivities = cloudActivities.map(a => ({ ...a, synced: true }));
+        await db.activity_logs.bulkPut(mappedActivities);
+
+        if (stillUnsyncedActivities.length > 0) {
+          console.log(`🔐 ${stillUnsyncedActivities.length} unsynced Activity-Log(s) wiederherstellen...`);
+          for (const a of stillUnsyncedActivities) {
+            delete a.id;
+            await db.activity_logs.add(a);
+          }
+        }
+
+        console.log(`📥 ${cloudActivities.length} Activity Logs synchronisiert`);
       }
 
       // 2. Referenzdaten syncen
@@ -275,6 +407,7 @@ export function AppProvider({ children }) {
 
       // 4. History neu laden
       await refreshHistory();
+      await refreshActivityHistory();
 
       console.log('✅ Sync erfolgreich abgeschlossen!');
     } catch (error) {
@@ -287,10 +420,12 @@ export function AppProvider({ children }) {
 
   const value = {
     history,
+    activityHistory,
     isOnline,
     isWorkoutActive,
     setIsWorkoutActive,
     refreshHistory,
+    refreshActivityHistory,
     lastSyncTime,
     isSyncingManually,
     triggerManualSync

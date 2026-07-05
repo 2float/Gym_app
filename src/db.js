@@ -36,4 +36,16 @@ db.version(4).stores({
   user_config: '[user_id+key]'
 });
 
-console.log("Database initialized (v4)");
+// v5: activity_logs für alternative Sportarten (Nicht-Gym-Tage)
+db.version(5).stores({
+  workout_logs: '++id, date, workoutName, synced',
+  app_config: 'key',
+  ref_equipment: 'id, name',
+  ref_exercises: 'id, name, category',
+  ref_routines: 'id, name, sort_order',
+  ref_routine_exercises: 'id, routine_id, exercise_id',
+  user_config: '[user_id+key]',
+  activity_logs: '++id, date, synced'
+});
+
+console.log("Database initialized (v5)");

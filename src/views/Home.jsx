@@ -10,7 +10,7 @@ import {
 } from '../services/smartWorkoutService';
 import { useApp } from '../contexts/AppContext';
 
-export default function Home({ onStartWorkout }) {
+export default function Home({ onStartWorkout, onLogActivity }) {
   const { isOnline, isSyncingManually, triggerManualSync, history } = useApp();
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -252,6 +252,16 @@ export default function Home({ onStartWorkout }) {
             </p>
           </div>
         )}
+
+        <div className="pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onLogActivity}
+            className="w-full py-3 px-4 bg-teal-50 dark:bg-teal-900/20 hover:bg-teal-100 dark:hover:bg-teal-900/40 border-2 border-dashed border-teal-300 dark:border-teal-700 rounded-xl font-semibold text-sm text-teal-700 dark:text-teal-300 transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span className="text-lg">🏄</span>
+            Andere Sportart eintragen
+          </button>
+        </div>
       </div>
 
       {/* LETZTE 5 WORKOUTS */}
