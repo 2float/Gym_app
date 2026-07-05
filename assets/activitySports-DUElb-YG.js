@@ -1,0 +1,1 @@
+const l=[{type:"surfen",label:"Surfen",icon:"🏄"},{type:"volleyball",label:"Volleyball",icon:"🏐"},{type:"mountainbiken",label:"Mountainbiken",icon:"🚵"},{type:"laufen",label:"Laufen",icon:"🏃"},{type:"schwimmen",label:"Schwimmen",icon:"🏊"},{type:"snowboarden",label:"Snowboarden",icon:"🏂"}],o="🔸";function a(n){return l.find(e=>e.type===n)?.icon??o}export{o as C,l as S,a as g};
